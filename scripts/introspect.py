@@ -203,12 +203,15 @@ def build_specs(schema: dict, overrides: dict):
 
 
 def _partition_expr(spec: EntitySpec, ov: dict) -> str:
-    """INV-3: partition only by immutable columns.
+    """INV-3: partition only by immutable columns; avoid high-cardinality keys.
 
     Block-partition only for pure block_cursor entities (asserted immutable, so
-    blockNumber is the immutable creation block). For dual/field_cursor/full_rescan
-    the block may be a mutable last-activity block, so fall back to the always-safe
-    immutable id hash. An explicit yaml `partition` (or `ts_immutable`) overrides.
+    blockNumber is the immutable creation block); their inserts are block-windowed
+    so each insert touches few partitions. Everything else is UNPARTITIONED ("")
+    so each insert produces a single part — partitioning by cityHash64(id) would
+    scatter every insert across many parts and trigger merge-storm OOMs on a small
+    ClickHouse instance. Unpartitioned is still immutable + dedup-safe (id is the
+    ORDER BY key). An explicit yaml `partition` (or `ts_immutable`) overrides.
     """
     if ov.get("partition"):
         return ov["partition"]
@@ -219,7 +222,7 @@ def _partition_expr(spec: EntitySpec, ov: dict) -> str:
         ts_ch = spec.ch_name_for(spec.ts_field)
         if ts_ch:
             return f"toStartOfMonth(toDateTime({ts_ch}))"
-    return "cityHash64(id) % 64"
+    return ""  # unpartitioned
 
 
 def _enforce_guardrails(specs):
@@ -281,8 +284,9 @@ def generate_typed_sql(specs) -> str:
         cols.append("    `_synced_block` UInt64 DEFAULT 0")
         cols.append("    `insert_version` UInt64 MATERIALIZED toUnixTimestamp64Nano(now64(9))")
         out.append(",\n".join(cols))
+        part = f" PARTITION BY {s.partition_expr}" if s.partition_expr else ""
         out.append(f") ENGINE = ReplacingMergeTree({s.version_column}) "
-                   f"ORDER BY (id) PARTITION BY {s.partition_expr};")
+                   f"ORDER BY (id){part};")
         out.append("")
     return "\n".join(out)
 

@@ -33,13 +33,14 @@ def test_inv2_field_cursor_has_cursor():
 
 
 def test_inv3_partition_is_immutable():
-    # Pure block_cursor may partition by block; everything else must use the
-    # immutable id hash (never a mutable column).
+    # Pure block_cursor may partition by the immutable creation block; everything
+    # else is unpartitioned (avoids high-cardinality-partition merge storms while
+    # staying immutable + dedup-safe on the id ORDER BY key).
     for s in ENTITIES:
         if s.strategy == SyncStrategy.BLOCK_CURSOR:
-            assert s.partition_expr.startswith("intDiv(") or s.partition_expr.startswith("cityHash64")
+            assert s.partition_expr.startswith("intDiv("), (s.gql_type, s.partition_expr)
         else:
-            assert s.partition_expr == "cityHash64(id) % 64", (s.gql_type, s.partition_expr)
+            assert s.partition_expr == "", (s.gql_type, s.partition_expr)
 
 
 def test_expiry_time_is_uint256():

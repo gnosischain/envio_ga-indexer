@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS auto_topup (
     `ingested_at` DateTime DEFAULT now(),
     `_synced_block` UInt64 DEFAULT 0,
     `insert_version` UInt64 MATERIALIZED toUnixTimestamp64Nano(now64(9))
-) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id) PARTITION BY cityHash64(id) % 64;
+) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id);
 
 -- entity: Avatar  strategy: dual  mutable: True
 CREATE TABLE IF NOT EXISTS avatar (
@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS avatar (
     `ingested_at` DateTime DEFAULT now(),
     `_synced_block` UInt64 DEFAULT 0,
     `insert_version` UInt64 MATERIALIZED toUnixTimestamp64Nano(now64(9))
-) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id) PARTITION BY cityHash64(id) % 64;
+) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id);
 
 -- entity: AvatarBalance  strategy: field_cursor  mutable: True
 CREATE TABLE IF NOT EXISTS avatar_balance (
@@ -75,7 +75,7 @@ CREATE TABLE IF NOT EXISTS avatar_balance (
     `ingested_at` DateTime DEFAULT now(),
     `_synced_block` UInt64 DEFAULT 0,
     `insert_version` UInt64 MATERIALIZED toUnixTimestamp64Nano(now64(9))
-) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id) PARTITION BY cityHash64(id) % 64;
+) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id);
 
 -- entity: AvatarTotalBalanceV2  strategy: field_cursor  mutable: True
 CREATE TABLE IF NOT EXISTS avatar_total_balance_v2 (
@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS avatar_total_balance_v2 (
     `ingested_at` DateTime DEFAULT now(),
     `_synced_block` UInt64 DEFAULT 0,
     `insert_version` UInt64 MATERIALIZED toUnixTimestamp64Nano(now64(9))
-) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id) PARTITION BY cityHash64(id) % 64;
+) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id);
 
 -- entity: Cashback  strategy: field_cursor  mutable: True
 CREATE TABLE IF NOT EXISTS cashback (
@@ -110,7 +110,7 @@ CREATE TABLE IF NOT EXISTS cashback (
     `ingested_at` DateTime DEFAULT now(),
     `_synced_block` UInt64 DEFAULT 0,
     `insert_version` UInt64 MATERIALIZED toUnixTimestamp64Nano(now64(9))
-) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id) PARTITION BY cityHash64(id) % 64;
+) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id);
 
 -- entity: CashbackStatusHistory  strategy: field_cursor  mutable: False
 CREATE TABLE IF NOT EXISTS cashback_status_history (
@@ -123,7 +123,7 @@ CREATE TABLE IF NOT EXISTS cashback_status_history (
     `ingested_at` DateTime DEFAULT now(),
     `_synced_block` UInt64 DEFAULT 0,
     `insert_version` UInt64 MATERIALIZED toUnixTimestamp64Nano(now64(9))
-) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id) PARTITION BY cityHash64(id) % 64;
+) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id);
 
 -- entity: CirclesBacking  strategy: full_rescan  mutable: True
 CREATE TABLE IF NOT EXISTS circles_backing (
@@ -146,7 +146,7 @@ CREATE TABLE IF NOT EXISTS circles_backing (
     `ingested_at` DateTime DEFAULT now(),
     `_synced_block` UInt64 DEFAULT 0,
     `insert_version` UInt64 MATERIALIZED toUnixTimestamp64Nano(now64(9))
-) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id) PARTITION BY cityHash64(id) % 64;
+) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id);
 
 -- entity: CoordinatorState  strategy: full_rescan  mutable: True
 CREATE TABLE IF NOT EXISTS coordinator_state (
@@ -162,7 +162,7 @@ CREATE TABLE IF NOT EXISTS coordinator_state (
     `ingested_at` DateTime DEFAULT now(),
     `_synced_block` UInt64 DEFAULT 0,
     `insert_version` UInt64 MATERIALIZED toUnixTimestamp64Nano(now64(9))
-) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id) PARTITION BY cityHash64(id) % 64;
+) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id);
 
 -- entity: EarnedFromInvite  strategy: full_rescan  mutable: True
 CREATE TABLE IF NOT EXISTS earned_from_invite (
@@ -175,7 +175,7 @@ CREATE TABLE IF NOT EXISTS earned_from_invite (
     `ingested_at` DateTime DEFAULT now(),
     `_synced_block` UInt64 DEFAULT 0,
     `insert_version` UInt64 MATERIALIZED toUnixTimestamp64Nano(now64(9))
-) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id) PARTITION BY cityHash64(id) % 64;
+) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id);
 
 -- entity: GnosisAppUser  strategy: full_rescan  mutable: True
 CREATE TABLE IF NOT EXISTS gnosis_app_user (
@@ -187,7 +187,7 @@ CREATE TABLE IF NOT EXISTS gnosis_app_user (
     `ingested_at` DateTime DEFAULT now(),
     `_synced_block` UInt64 DEFAULT 0,
     `insert_version` UInt64 MATERIALIZED toUnixTimestamp64Nano(now64(9))
-) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id) PARTITION BY cityHash64(id) % 64;
+) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id);
 
 -- entity: GuardianModule  strategy: dual  mutable: True
 CREATE TABLE IF NOT EXISTS guardian_module (
@@ -203,7 +203,7 @@ CREATE TABLE IF NOT EXISTS guardian_module (
     `ingested_at` DateTime DEFAULT now(),
     `_synced_block` UInt64 DEFAULT 0,
     `insert_version` UInt64 MATERIALIZED toUnixTimestamp64Nano(now64(9))
-) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id) PARTITION BY cityHash64(id) % 64;
+) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id);
 
 -- entity: HistoricalGNOBalance  strategy: full_rescan  mutable: True
 CREATE TABLE IF NOT EXISTS historical_gno_balance (
@@ -218,7 +218,7 @@ CREATE TABLE IF NOT EXISTS historical_gno_balance (
     `ingested_at` DateTime DEFAULT now(),
     `_synced_block` UInt64 DEFAULT 0,
     `insert_version` UInt64 MATERIALIZED toUnixTimestamp64Nano(now64(9))
-) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id) PARTITION BY cityHash64(id) % 64;
+) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id);
 
 -- entity: InvestmentAccount  strategy: full_rescan  mutable: True
 CREATE TABLE IF NOT EXISTS investment_account (
@@ -232,7 +232,7 @@ CREATE TABLE IF NOT EXISTS investment_account (
     `ingested_at` DateTime DEFAULT now(),
     `_synced_block` UInt64 DEFAULT 0,
     `insert_version` UInt64 MATERIALIZED toUnixTimestamp64Nano(now64(9))
-) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id) PARTITION BY cityHash64(id) % 64;
+) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id);
 
 -- entity: Metri_Balance  strategy: full_rescan  mutable: True
 CREATE TABLE IF NOT EXISTS metri_balance (
@@ -245,7 +245,7 @@ CREATE TABLE IF NOT EXISTS metri_balance (
     `ingested_at` DateTime DEFAULT now(),
     `_synced_block` UInt64 DEFAULT 0,
     `insert_version` UInt64 MATERIALIZED toUnixTimestamp64Nano(now64(9))
-) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id) PARTITION BY cityHash64(id) % 64;
+) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id);
 
 -- entity: Metri_Order  strategy: full_rescan  mutable: True
 CREATE TABLE IF NOT EXISTS metri_order (
@@ -257,7 +257,7 @@ CREATE TABLE IF NOT EXISTS metri_order (
     `ingested_at` DateTime DEFAULT now(),
     `_synced_block` UInt64 DEFAULT 0,
     `insert_version` UInt64 MATERIALIZED toUnixTimestamp64Nano(now64(9))
-) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id) PARTITION BY cityHash64(id) % 64;
+) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id);
 
 -- entity: Metri_Pay_DelayModule  strategy: full_rescan  mutable: True
 CREATE TABLE IF NOT EXISTS metri_pay_delay_module (
@@ -270,7 +270,7 @@ CREATE TABLE IF NOT EXISTS metri_pay_delay_module (
     `ingested_at` DateTime DEFAULT now(),
     `_synced_block` UInt64 DEFAULT 0,
     `insert_version` UInt64 MATERIALIZED toUnixTimestamp64Nano(now64(9))
-) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id) PARTITION BY cityHash64(id) % 64;
+) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id);
 
 -- entity: Metri_Pay_DelayModuleOwner  strategy: field_cursor  mutable: False
 CREATE TABLE IF NOT EXISTS metri_pay_delay_module_owner (
@@ -284,7 +284,7 @@ CREATE TABLE IF NOT EXISTS metri_pay_delay_module_owner (
     `ingested_at` DateTime DEFAULT now(),
     `_synced_block` UInt64 DEFAULT 0,
     `insert_version` UInt64 MATERIALIZED toUnixTimestamp64Nano(now64(9))
-) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id) PARTITION BY cityHash64(id) % 64;
+) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id);
 
 -- entity: Metri_Pay_RolesModule  strategy: full_rescan  mutable: True
 CREATE TABLE IF NOT EXISTS metri_pay_roles_module (
@@ -299,7 +299,7 @@ CREATE TABLE IF NOT EXISTS metri_pay_roles_module (
     `ingested_at` DateTime DEFAULT now(),
     `_synced_block` UInt64 DEFAULT 0,
     `insert_version` UInt64 MATERIALIZED toUnixTimestamp64Nano(now64(9))
-) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id) PARTITION BY cityHash64(id) % 64;
+) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id);
 
 -- entity: Notification  strategy: field_cursor  mutable: False
 CREATE TABLE IF NOT EXISTS notification (
@@ -314,7 +314,7 @@ CREATE TABLE IF NOT EXISTS notification (
     `ingested_at` DateTime DEFAULT now(),
     `_synced_block` UInt64 DEFAULT 0,
     `insert_version` UInt64 MATERIALIZED toUnixTimestamp64Nano(now64(9))
-) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id) PARTITION BY cityHash64(id) % 64;
+) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id);
 
 -- entity: PendingRecovery  strategy: full_rescan  mutable: True
 CREATE TABLE IF NOT EXISTS pending_recovery (
@@ -328,7 +328,7 @@ CREATE TABLE IF NOT EXISTS pending_recovery (
     `ingested_at` DateTime DEFAULT now(),
     `_synced_block` UInt64 DEFAULT 0,
     `insert_version` UInt64 MATERIALIZED toUnixTimestamp64Nano(now64(9))
-) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id) PARTITION BY cityHash64(id) % 64;
+) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id);
 
 -- entity: Profile  strategy: field_cursor  mutable: True
 CREATE TABLE IF NOT EXISTS profile (
@@ -345,7 +345,7 @@ CREATE TABLE IF NOT EXISTS profile (
     `ingested_at` DateTime DEFAULT now(),
     `_synced_block` UInt64 DEFAULT 0,
     `insert_version` UInt64 MATERIALIZED toUnixTimestamp64Nano(now64(9))
-) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id) PARTITION BY cityHash64(id) % 64;
+) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id);
 
 -- entity: Swap  strategy: full_rescan  mutable: True
 CREATE TABLE IF NOT EXISTS swap (
@@ -368,7 +368,7 @@ CREATE TABLE IF NOT EXISTS swap (
     `ingested_at` DateTime DEFAULT now(),
     `_synced_block` UInt64 DEFAULT 0,
     `insert_version` UInt64 MATERIALIZED toUnixTimestamp64Nano(now64(9))
-) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id) PARTITION BY cityHash64(id) % 64;
+) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id);
 
 -- entity: Token  strategy: dual  mutable: True
 CREATE TABLE IF NOT EXISTS token (
@@ -387,7 +387,7 @@ CREATE TABLE IF NOT EXISTS token (
     `ingested_at` DateTime DEFAULT now(),
     `_synced_block` UInt64 DEFAULT 0,
     `insert_version` UInt64 MATERIALIZED toUnixTimestamp64Nano(now64(9))
-) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id) PARTITION BY cityHash64(id) % 64;
+) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id);
 
 -- entity: Transaction  strategy: block_cursor  mutable: False
 CREATE TABLE IF NOT EXISTS transaction (
@@ -422,7 +422,7 @@ CREATE TABLE IF NOT EXISTS transaction_action (
     `ingested_at` DateTime DEFAULT now(),
     `_synced_block` UInt64 DEFAULT 0,
     `insert_version` UInt64 MATERIALIZED toUnixTimestamp64Nano(now64(9))
-) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id) PARTITION BY cityHash64(id) % 64;
+) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id);
 
 -- entity: Transfer  strategy: block_cursor  mutable: False
 CREATE TABLE IF NOT EXISTS transfer (
@@ -468,7 +468,7 @@ CREATE TABLE IF NOT EXISTS trust_relation (
     `ingested_at` DateTime DEFAULT now(),
     `_synced_block` UInt64 DEFAULT 0,
     `insert_version` UInt64 MATERIALIZED toUnixTimestamp64Nano(now64(9))
-) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id) PARTITION BY cityHash64(id) % 64;
+) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id);
 
 -- entity: V1TokenPendingStop  strategy: full_rescan  mutable: True
 CREATE TABLE IF NOT EXISTS v1_token_pending_stop (
@@ -479,4 +479,4 @@ CREATE TABLE IF NOT EXISTS v1_token_pending_stop (
     `ingested_at` DateTime DEFAULT now(),
     `_synced_block` UInt64 DEFAULT 0,
     `insert_version` UInt64 MATERIALIZED toUnixTimestamp64Nano(now64(9))
-) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id) PARTITION BY cityHash64(id) % 64;
+) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id);
