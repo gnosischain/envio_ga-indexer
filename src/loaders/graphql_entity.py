@@ -31,14 +31,26 @@ class GraphQLEntityLoader:
         )
         return {r["id"]: r["h"] for r in rows}
 
-    async def write_rows(self, gql_rows: List[Dict[str, Any]], synced_block: int = 0) -> int:
-        """Write changed rows; return the number of changed (written) rows."""
+    async def write_rows(self, gql_rows: List[Dict[str, Any]], synced_block: int = 0,
+                         check_existing: bool = True) -> int:
+        """Write changed rows; return the number of changed (written) rows.
+
+        check_existing=True (realtime/rescan/reconcile): compare each row's hash to
+        the latest stored hash and write only what changed (free overlap re-reads,
+        no duplicate raw versions). check_existing=False (backfill): skip that heavy
+        per-page read entirely — on a clean backfill every row is new, and resume
+        skips completed pages, so the read is pure overhead (and an OOM risk on a
+        small ClickHouse instance).
+        """
         if not gql_rows:
             return 0
 
         hashes = {r["id"]: calculate_payload_hash(r) for r in gql_rows}
-        existing = self._existing_hashes([r["id"] for r in gql_rows])
-        changed = [r for r in gql_rows if hashes[r["id"]] != existing.get(r["id"])]
+        if check_existing:
+            existing = self._existing_hashes([r["id"] for r in gql_rows])
+            changed = [r for r in gql_rows if hashes[r["id"]] != existing.get(r["id"])]
+        else:
+            changed = gql_rows
         if not changed:
             return 0
 

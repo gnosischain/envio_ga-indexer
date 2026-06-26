@@ -103,14 +103,18 @@ class LoaderService:
             try:
                 rows = await gc.fetch_keyset(spec, after_id=after_id, block_lo=item.block_lo,
                                              block_hi=item.block_hi, limit=page_size)
-                self.state.claim_page(spec.name, spec.strategy, cursor_start, page_seq, worker_id, pk)
-                written = await loader.write_rows(rows, synced_block=head)
-            except GraphQLError as e:
+                # No per-page claim insert during backfill: resume works off completed
+                # pages, so claiming is redundant here and just adds state-table writes.
+                written = await loader.write_rows(rows, synced_block=head, check_existing=False)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                # Fail just this page/item and move on; resume re-drives it later.
                 status = self.state.fail_page(spec.name, spec.strategy, cursor_start, page_seq,
                                               str(e), partition_key=pk, worker_id=worker_id)
                 obs.pages_total.labels(entity=spec.name, status=status).inc()
                 logger.error("Backfill page failed", entity=spec.name, partition_key=pk,
-                             cursor_start=cursor_start, error=str(e))
+                             cursor_start=cursor_start, error=str(e)[:200])
                 return
             last_id = rows[-1]["id"] if rows else after_id
             complete = len(rows) < page_size
@@ -134,7 +138,10 @@ class LoaderService:
                 try:
                     head = await gc.head_block()
                     obs.chain_head_block.set(head)
-                    await asyncio.gather(*(self._realtime_entity(s, gc, head) for s in specs))
+                    # Sequential per-entity: gentler on a small ClickHouse instance
+                    # than running every entity's reads/writes concurrently.
+                    for s in specs:
+                        await self._realtime_entity(s, gc, head)
                 except Exception as e:  # keep the loop alive
                     logger.error("Realtime tick error", error=str(e))
                 elapsed = time.monotonic() - tick
