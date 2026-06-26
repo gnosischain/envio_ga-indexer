@@ -8,6 +8,7 @@ and FINAL-friendly read helpers. Drops all beacon-specific chunk/validator logic
 """
 import asyncio
 import json
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -43,6 +44,16 @@ def connect_clickhouse(
     return client
 
 
+def _is_retryable(err: Exception) -> bool:
+    """Transient ClickHouse errors worth retrying after a short pause."""
+    s = str(err)
+    return any(tok in s for tok in (
+        "MEMORY_LIMIT_EXCEEDED", "code 241", "Code: 241",       # server overcommit
+        "TOO_MANY_PARTS", "code 252", "Code: 252",              # merge backlog
+        "SOCKET_TIMEOUT", "code 209", "Timeout", "EOF occurred",
+    ))
+
+
 def _norm(v: Any) -> Any:
     """Normalize a Python value for clickhouse-connect row insert."""
     if isinstance(v, datetime):
@@ -59,6 +70,7 @@ class ClickHouse:
 
     POOL_SIZE = 8
     MAX_ROWS_PER_CHUNK = 10000
+    INSERT_ATTEMPTS = 6           # retry transient (memory/parts) insert errors
 
     # Memory-friendly settings for ClickHouse Cloud.
     INSERT_SETTINGS = {
@@ -160,8 +172,20 @@ class ClickHouse:
         for i in range(0, len(data), self.MAX_ROWS_PER_CHUNK):
             chunk = data[i:i + self.MAX_ROWS_PER_CHUNK]
             rows = [as_row(r) for r in chunk]
-            client.insert(table, rows, column_names=cols, column_oriented=False,
-                          settings=self.INSERT_SETTINGS)
+            self._insert_with_retry(client, table, rows, cols)
+
+    def _insert_with_retry(self, client: Client, table: str, rows, cols):
+        for attempt in range(self.INSERT_ATTEMPTS):
+            try:
+                client.insert(table, rows, column_names=cols, column_oriented=False,
+                              settings=self.INSERT_SETTINGS)
+                return
+            except Exception as e:
+                if attempt < self.INSERT_ATTEMPTS - 1 and _is_retryable(e):
+                    # Let background merges free memory before retrying.
+                    time.sleep(min(30, 3 * (attempt + 1)))
+                    continue
+                raise
 
     # ── pool ──────────────────────────────────────────────────────────────────
     async def _get_conn(self) -> Client:

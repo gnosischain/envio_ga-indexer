@@ -25,6 +25,7 @@ from src.utils.logger import logger
 from src import observability as obs
 
 BACKFILL_BLOCK_CHUNK = 5_000_000   # block-window size for block_cursor sub-chunking
+FLUSH_ROWS = 10_000                # accumulate ~this many rows per insert (fewer parts/merges)
 
 
 class _WorkItem:
@@ -97,35 +98,51 @@ class LoaderService:
         loader = self.loader_for(spec)
         after_id = pos["cursor"]
         page_seq = pos["page_seq"] + 1
+        flush_rows = max(page_size, FLUSH_ROWS)
+        buf = []
+        batch_start = after_id
+        last_id = after_id
+        t0 = time.monotonic()
         while True:
-            cursor_start = after_id
-            t0 = time.monotonic()
             try:
                 rows = await gc.fetch_keyset(spec, after_id=after_id, block_lo=item.block_lo,
                                              block_hi=item.block_hi, limit=page_size)
-                # No per-page claim insert during backfill: resume works off completed
-                # pages, so claiming is redundant here and just adds state-table writes.
-                written = await loader.write_rows(rows, synced_block=head, check_existing=False)
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                # Fail just this page/item and move on; resume re-drives it later.
-                status = self.state.fail_page(spec.name, spec.strategy, cursor_start, page_seq,
-                                              str(e), partition_key=pk, worker_id=worker_id)
-                obs.pages_total.labels(entity=spec.name, status=status).inc()
-                logger.error("Backfill page failed", entity=spec.name, partition_key=pk,
-                             cursor_start=cursor_start, error=str(e)[:200])
+                self.state.fail_page(spec.name, spec.strategy, batch_start, page_seq, str(e),
+                                     partition_key=pk, worker_id=worker_id)
+                logger.error("Backfill fetch failed", entity=spec.name, partition_key=pk,
+                             cursor_start=batch_start, error=str(e)[:200])
                 return
-            last_id = rows[-1]["id"] if rows else after_id
+            if rows:
+                buf.extend(rows)
+                last_id = rows[-1]["id"]
+                after_id = last_id
             complete = len(rows) < page_size
-            self.state.complete_page(spec.name, spec.strategy, cursor_start, last_id, page_seq,
-                                     written, complete, partition_key=pk, worker_id=worker_id)
-            obs.pages_total.labels(entity=spec.name, status="completed").inc()
-            obs.page_duration_seconds.labels(entity=spec.name).observe(time.monotonic() - t0)
+            # Flush a batch of accumulated pages -> fewer, larger inserts (fewer parts).
+            if buf and (len(buf) >= flush_rows or complete):
+                try:
+                    written = await loader.write_rows(buf, synced_block=head, check_existing=False)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    self.state.fail_page(spec.name, spec.strategy, batch_start, page_seq, str(e),
+                                         partition_key=pk, worker_id=worker_id)
+                    obs.pages_total.labels(entity=spec.name, status="failed").inc()
+                    logger.error("Backfill batch failed", entity=spec.name, partition_key=pk,
+                                 cursor_start=batch_start, error=str(e)[:200])
+                    return
+                self.state.complete_page(spec.name, spec.strategy, batch_start, last_id, page_seq,
+                                         written, complete, partition_key=pk, worker_id=worker_id)
+                obs.pages_total.labels(entity=spec.name, status="completed").inc()
+                obs.page_duration_seconds.labels(entity=spec.name).observe(time.monotonic() - t0)
+                buf = []
+                batch_start = last_id
+                page_seq += 1
+                t0 = time.monotonic()
             if complete:
                 break
-            after_id = last_id
-            page_seq += 1
 
     # ── realtime ──────────────────────────────────────────────────────────────────
     async def realtime(self, entities: Optional[List[str]] = None, poll_interval: Optional[int] = None):
