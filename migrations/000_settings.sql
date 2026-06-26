@@ -1,0 +1,3 @@
+-- Database-level settings / no-op placeholder.
+-- No special server settings are required: UInt256, LowCardinality(String),
+-- and modulo/intDiv partition expressions are all natively supported.

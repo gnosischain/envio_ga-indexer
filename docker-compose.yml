@@ -1,0 +1,50 @@
+# All services target the EXTERNAL managed ClickHouse (configured via .env).
+# There is NO bundled clickhouse container. Run order:
+#   migrate -> introspect -> migrate -> backfill -> realtime  (+ scheduled reconcile, ad-hoc maintenance)
+#
+# Usage:
+#   docker compose --profile migration  up
+#   docker compose --profile introspect up
+#   docker compose --profile backfill   up
+#   docker compose --profile realtime   up -d
+#   docker compose --profile reconcile  up
+#   docker compose --profile maintenance run --rm maintenance maintain check
+
+x-base: &base
+  build: .
+  env_file: .env
+  restart: "no"
+
+services:
+  migration:
+    <<: *base
+    profiles: ["migration"]
+    command: ["python", "-m", "src.main", "migrate"]
+
+  introspect:
+    <<: *base
+    profiles: ["introspect"]
+    command: ["python", "-m", "src.main", "introspect"]
+
+  backfill:
+    <<: *base
+    profiles: ["backfill"]
+    command: ["python", "-m", "src.main", "load", "backfill"]
+    ports: ["9090:9090"]
+
+  realtime:
+    <<: *base
+    profiles: ["realtime"]
+    command: ["python", "-m", "src.main", "load", "realtime"]
+    restart: unless-stopped
+    ports: ["9091:9090"]
+
+  reconcile:
+    <<: *base
+    profiles: ["reconcile"]
+    command: ["python", "-m", "src.main", "reconcile"]
+
+  maintenance:
+    <<: *base
+    profiles: ["maintenance"]
+    command: ["python", "-m", "src.main", "maintain", "check"]

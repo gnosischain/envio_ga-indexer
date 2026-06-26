@@ -1,0 +1,111 @@
+# Per-entity overrides applied by scripts/introspect.py at codegen time.
+#
+# Keys per entity (by GraphQL type name):
+#   tier:              block_cursor | field_cursor | full_rescan | dual
+#   cursor_field:      GraphQL field name used as the incremental cursor
+#   mutable:           true|false  (block_cursor REQUIRES mutable:false — INV-2)
+#   deletable:         true|false  (false skips the reconcile id-diff for this entity)
+#   version_field:     upstream monotonic field for ReplacingMergeTree(version)
+#   ts_field/block_field: override auto-detected creation ts / block field
+#   ts_immutable:      true  -> allow PARTITION BY toStartOfMonth(toDateTime(ts))
+#   partition:         explicit ClickHouse PARTITION BY expression
+#   rescan_interval_s: full-rescan / dual rescan cadence
+#   enabled:           include this entity (default true)
+#
+# Tiers reflect the verified field inventory. Partitioning: pure block_cursor
+# partitions by intDiv(block_number,1e6) (immutable creation block); everything
+# else by cityHash64(id)%64 (immutable, dedup-safe). Unlisted entities default to
+# full_rescan / mutable:true / id-hash partition. deletable defaults true so every
+# entity is covered by the reconcile id-diff (user choice: reconcile all).
+
+defaults:
+  rescan_interval_s: 300
+  enabled: true
+
+entities:
+  # ── block_cursor: immutable, append-only event logs ──────────────────────
+  Transfer:
+    tier: block_cursor
+    cursor_field: blockNumber
+    mutable: false
+  Transaction:
+    tier: block_cursor
+    cursor_field: blockNumber
+    mutable: false
+
+  # ── dual: block-bearing but mutable (block discovery + periodic full rescan)
+  Avatar:
+    tier: dual
+    cursor_field: blockNumber
+    mutable: true
+    rescan_interval_s: 3600
+  Token:
+    tier: dual
+    cursor_field: blockNumber
+    mutable: true
+    rescan_interval_s: 3600
+  TrustRelation:
+    tier: dual
+    cursor_field: blockNumber
+    mutable: true
+    rescan_interval_s: 7200
+    field_types:
+      expiryTime: UInt256   # uses the uint256-max "never expires" sentinel; overflows Int256
+  GuardianModule:
+    tier: dual
+    cursor_field: blockNumber
+    mutable: true
+    rescan_interval_s: 1800
+
+  # ── field_cursor: monotonic field that is set at creation and advances on update
+  Cashback:
+    tier: field_cursor
+    cursor_field: lastStatusUpdate
+    mutable: true
+  AvatarBalance:
+    tier: field_cursor
+    cursor_field: lastCalculated
+    mutable: true
+  AvatarTotalBalanceV2:
+    tier: field_cursor
+    cursor_field: lastPendingUpdate
+    mutable: true
+  Profile:
+    tier: field_cursor
+    cursor_field: lastUpdatedBlockNumber
+    mutable: true
+  CashbackStatusHistory:
+    tier: field_cursor
+    cursor_field: timestamp
+    mutable: false
+  Notification:
+    tier: field_cursor
+    cursor_field: timestamp
+    mutable: false
+  Metri_Pay_DelayModuleOwner:
+    tier: field_cursor
+    cursor_field: timestamp
+    mutable: false
+  TransactionAction:        # large (>1M) but append-only with a creation timestamp
+    tier: field_cursor
+    cursor_field: timestamp
+    mutable: false
+
+  # ── full_rescan: mutable/static, no reliable monotonic-at-creation cursor ──
+  Swap:                     # status flips Open->Filled in place; no usable cursor
+    tier: full_rescan
+    mutable: true
+    rescan_interval_s: 1800
+  CirclesBacking:           # lifecycle (initiated->completed); completedAt null until done
+    tier: full_rescan
+    mutable: true
+  Metri_Pay_DelayModule:    # lastTransactionTimestamp may be null at creation
+    tier: full_rescan
+    mutable: true
+  Metri_Pay_RolesModule:    # lastSpentAt null until first spend
+    tier: full_rescan
+    mutable: true
+  # Defaulted to full_rescan (no override needed):
+  #   AutoTopup, CoordinatorState, EarnedFromInvite, GnosisAppUser,
+  #   HistoricalGNOBalance, InvestmentAccount, Metri_Balance, Metri_Order,
+  #   PendingRecovery, V1TokenPendingStop
