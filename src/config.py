@@ -50,6 +50,7 @@ class Config:
     CLICKHOUSE_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD", "")
     CLICKHOUSE_DATABASE = os.getenv("CLICKHOUSE_DATABASE", "envio_ga")
     CLICKHOUSE_SECURE = _bool("CLICKHOUSE_SECURE", "true")
+    CLICKHOUSE_TIMEOUT = int(os.getenv("CLICKHOUSE_TIMEOUT", "120"))  # send/receive timeout (s)
 
     # ── Raw audit log retention (0 = no TTL, keep forever) ──────────────────
     RAW_TTL_DAYS = int(os.getenv("RAW_TTL_DAYS", "0"))

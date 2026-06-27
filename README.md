@@ -26,7 +26,8 @@ queryable mirror), structured like `beacon-indexer` and reusing `cryo-indexer`'s
   entities use `field_cursor` (monotonic field) or `full_rescan` / `dual` (periodic full body re-walk),
   because an id-only reconcile catches deletes/inserts but not in-place field updates.
 - **INV-3 (partitioning):** typed tables partition only by **immutable** columns — `intDiv(block_number,1e6)`
-  for pure block_cursor, else `cityHash64(id) % 64`. Never by a mutable field (else FINAL never dedups).
+  for pure block_cursor, else unpartitioned. Never by a mutable field (else an id's versions split
+  across partitions and never collapse).
 
 ## Sync tiers (28 entities)
 - **block_cursor** (immutable, append-only): `transfer`, `transaction`
@@ -42,10 +43,27 @@ Tiers are encoded in `config/entities.yaml` and baked into the registry by `intr
 deletable entity is also covered by `reconcile`.
 
 ## Querying the mirror
-Typed tables are `ReplacingMergeTree` keyed by `id` with a tombstone flag. Always read with:
+Typed tables are `ReplacingMergeTree` keyed by `id` with a tombstone flag.
+**Never use `FINAL`** — it forces a heavy merge-on-read and OOMs constrained
+instances. Dedup to the latest version per id with `argMax(col, insert_version)
+GROUP BY id` and drop tombstones via `HAVING`:
 ```sql
-SELECT * FROM <entity> FINAL WHERE _deleted = 0
+-- live rows, deduped, no FINAL
+SELECT id,
+       argMax(value, insert_version)        AS value,
+       argMax(block_number, insert_version) AS block_number
+       -- ... one argMax per column you need ...
+FROM <entity>
+GROUP BY id
+HAVING argMax(_deleted, insert_version) = 0;
+
+-- live row count
+SELECT count() FROM (
+  SELECT id FROM <entity> GROUP BY id HAVING argMax(_deleted, insert_version) = 0
+);
 ```
+(Background merges still collapse old versions over time, but reads must not rely
+on or trigger that with `FINAL`.)
 
 ## Layout
 ```
@@ -100,7 +118,8 @@ docker compose --profile reconcile  up
   `[watermark-overlap, head]` block window; field_cursor does a compound `(field,id)` keyset from the
   watermark; full_rescan/dual re-walk on a cadence. Watermarks advance only after durable writes.
 - **Reconcile**: id-only full walk → stage live ids → tombstone the disappeared.
-- **State**: a single append-only `ga_index_state` table read via `FINAL`/`argMax` (cryo pattern).
+- **State**: a single append-only `ga_index_state` table, read via `argMax(col, insert_version)`
+  dedup (never `FINAL`).
 
 ## Notes
 - `raw_entities` has **no TTL** (full mutation history kept forever); set `RAW_TTL_DAYS>0` to add one.

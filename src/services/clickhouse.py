@@ -2,9 +2,11 @@
 
 Keeps: secure connection with long timeouts, a small connection pool for
 concurrent async inserts, robust row-oriented insert with value normalization
-(int passthrough for UInt256, dict/list -> JSON, datetime -> naive, bool -> 0/1),
-and FINAL-friendly read helpers. Drops all beacon-specific chunk/validator logic
-(state-table claim logic lives in src/services/state.py).
+(int passthrough for UInt256, dict/list -> JSON, datetime -> naive, bool -> 0/1).
+Drops all beacon-specific chunk/validator logic (state-table claim logic lives in
+src/services/state.py). NOTE: callers must dedup ReplacingMergeTree reads with
+argMax(col, insert_version) GROUP BY key — never FINAL (it forces a heavy
+merge-on-read and OOMs constrained instances).
 """
 import asyncio
 import json
@@ -37,8 +39,8 @@ def connect_clickhouse(
         database=database,
         secure=secure,
         verify=verify,
-        send_receive_timeout=1800,
-        connect_timeout=300,
+        send_receive_timeout=config.CLICKHOUSE_TIMEOUT,
+        connect_timeout=60,
     )
     client.command("SELECT 1")
     return client
@@ -69,14 +71,15 @@ class ClickHouse:
     """Thin ClickHouse client with a pool for concurrent inserts."""
 
     POOL_SIZE = 8
-    MAX_ROWS_PER_CHUNK = 10000
-    INSERT_ATTEMPTS = 6           # retry transient (memory/parts) insert errors
+    MAX_ROWS_PER_CHUNK = 50000
+    INSERT_ATTEMPTS = 10          # retry transient (memory/parts/timeout) insert errors
 
     # Memory-friendly settings for ClickHouse Cloud.
     INSERT_SETTINGS = {
-        "max_insert_block_size": 1000,
-        "max_memory_usage": "200000000",
+        "max_insert_block_size": 10000,
+        "max_memory_usage": "300000000",
         "input_format_parallel_parsing": 0,
+        "optimize_on_insert": 0,          # skip insert-time merge work (less memory)
     }
 
     def __init__(self):
@@ -182,8 +185,8 @@ class ClickHouse:
                 return
             except Exception as e:
                 if attempt < self.INSERT_ATTEMPTS - 1 and _is_retryable(e):
-                    # Let background merges free memory before retrying.
-                    time.sleep(min(30, 3 * (attempt + 1)))
+                    # Let background merges free memory before retrying (longer each time).
+                    time.sleep(min(45, 5 * (attempt + 1)))
                     continue
                 raise
 

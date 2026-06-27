@@ -25,7 +25,7 @@ from src.utils.logger import logger
 from src import observability as obs
 
 BACKFILL_BLOCK_CHUNK = 5_000_000   # block-window size for block_cursor sub-chunking
-FLUSH_ROWS = 10_000                # accumulate ~this many rows per insert (fewer parts/merges)
+FLUSH_ROWS = 25_000                # accumulate ~this many rows per insert (fewer parts/merges)
 
 
 class _WorkItem:

@@ -67,9 +67,10 @@ def print_status(ch: ClickHouse = None):
         if r["entity"].startswith("_"):
             continue
         try:
+            # FINAL-free live count: dedup to latest version per id, keep non-deleted.
             live = ch.query_value(
-                f"SELECT count(DISTINCT id) FROM {r['entity']} FINAL WHERE _deleted=0",
-                default=0, settings=_CONSISTENT)
+                f"SELECT count() FROM (SELECT id FROM {r['entity']} GROUP BY id "
+                f"HAVING argMax(_deleted, insert_version) = 0)", default=0)
         except Exception:
             live = "?"
         bf = "complete" if r["backfill_complete"] else "partial"

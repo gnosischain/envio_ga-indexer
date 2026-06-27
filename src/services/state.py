@@ -1,10 +1,11 @@
-"""GaStateManager — append-only state over ga_index_state (read via FINAL/argMax).
+"""GaStateManager — append-only state over ga_index_state.
 
-A page is uniquely identified by (entity, partition_key, cursor_start) — the
-ReplacingMergeTree ORDER BY key — so every status transition is an INSERT that
-collapses to the latest version. page_seq is metrics-only; the backfill resume
-key is the furthest completed cursor_end. The realtime watermark is stored in a
-reserved partition_key='realtime' row.
+A page is uniquely identified by (entity, partition_key, cursor_start). Every
+status transition is an INSERT; reads dedup to the latest version per key with
+argMax(col, insert_version) GROUP BY ... — never FINAL (FINAL forces a heavy
+merge-on-read). page_seq is metrics-only; the backfill resume key is the furthest
+completed cursor_end. The realtime watermark lives in a reserved
+partition_key='realtime' row, the rescan marker in partition_key='rescan'.
 """
 from typing import Dict, List, Optional
 
@@ -14,6 +15,25 @@ from src.registry.schema import SyncStrategy
 TABLE = "ga_index_state"
 REALTIME_PK = "realtime"
 RESCAN_PK = "rescan"
+
+# Latest version of each (entity, partition_key, cursor_start) row — the FINAL-free
+# equivalent of `FROM ga_index_state FINAL`. Pass an inner WHERE to push the entity
+# filter into the aggregation.
+def _latest(inner_where: str = "") -> str:
+    w = (" WHERE " + inner_where) if inner_where else ""
+    return (
+        "SELECT entity, partition_key, cursor_start, "
+        "argMax(status, insert_version) AS status, "
+        "argMax(cursor_end, insert_version) AS cursor_end, "
+        "argMax(page_seq, insert_version) AS page_seq, "
+        "argMax(backfill_complete, insert_version) AS backfill_complete, "
+        "argMax(attempt_count, insert_version) AS attempt_count, "
+        "argMax(strategy, insert_version) AS strategy, "
+        "argMax(worker_id, insert_version) AS worker_id, "
+        "argMax(created_at, insert_version) AS created_at, "
+        "argMax(rows_indexed, insert_version) AS rows_indexed "
+        "FROM " + TABLE + w + " GROUP BY entity, partition_key, cursor_start"
+    )
 
 
 class GaStateManager:
@@ -60,19 +80,18 @@ class GaStateManager:
         return status
 
     def _attempts(self, entity, partition_key, cursor_start) -> int:
+        sub = _latest("entity={e:String} AND partition_key={pk:String} AND cursor_start={cs:String}")
         return int(self.ch.query_value(
-            "SELECT max(attempt_count) FROM " + TABLE + " FINAL "
-            "WHERE entity={e:String} AND partition_key={pk:String} AND cursor_start={cs:String}",
+            f"SELECT max(attempt_count) FROM ({sub})",
             {"e": entity, "pk": partition_key, "cs": cursor_start}, default=0) or 0)
 
     # ── resume ──────────────────────────────────────────────────────────────────
     def resume_position(self, entity, partition_key="") -> Dict:
         """Furthest completed cursor for a (entity, partition_key) keyset walk."""
+        sub = _latest("entity={e:String} AND partition_key={pk:String}")
         rows = self.ch.execute(
             "SELECT argMax(cursor_end, page_seq) AS c, max(page_seq) AS ps, "
-            "max(backfill_complete) AS done "
-            "FROM " + TABLE + " FINAL "
-            "WHERE entity={e:String} AND partition_key={pk:String} AND status='completed'",
+            f"max(backfill_complete) AS done FROM ({sub}) WHERE status='completed'",
             {"e": entity, "pk": partition_key})
         if not rows or rows[0]["c"] is None:
             return {"cursor": "", "page_seq": -1, "complete": False}
@@ -83,55 +102,50 @@ class GaStateManager:
     def is_backfill_complete(self, entity, partition_key="") -> bool:
         return self.resume_position(entity, partition_key)["complete"]
 
-    # ── realtime watermark ──────────────────────────────────────────────────────
+    # ── realtime watermark / rescan marker (argMax already dedups; no FINAL) ─────
     def get_watermark(self, entity) -> int:
-        v = self.ch.query_value(
-            "SELECT argMax(cursor_end, insert_version) FROM " + TABLE + " FINAL "
-            "WHERE entity={e:String} AND partition_key={pk:String}",
-            {"e": entity, "pk": REALTIME_PK}, default="")
-        try:
-            return int(v) if v not in (None, "") else 0
-        except (TypeError, ValueError):
-            return 0
+        return self._marker(entity, REALTIME_PK)
 
     def set_watermark(self, entity, strategy, value: int, rows: int = 0):
         self._record(entity, "completed", self._strategy_str(strategy),
                      partition_key=REALTIME_PK, cursor_end=str(int(value)), rows_indexed=rows)
 
     def get_last_rescan(self, entity) -> int:
-        v = self.ch.query_value(
-            "SELECT argMax(cursor_end, insert_version) FROM " + TABLE + " FINAL "
-            "WHERE entity={e:String} AND partition_key={pk:String}",
-            {"e": entity, "pk": RESCAN_PK}, default="")
-        try:
-            return int(v) if v not in (None, "") else 0
-        except (TypeError, ValueError):
-            return 0
+        return self._marker(entity, RESCAN_PK)
 
     def set_last_rescan(self, entity, strategy, epoch: int, rows: int = 0):
         self._record(entity, "completed", self._strategy_str(strategy),
                      partition_key=RESCAN_PK, cursor_end=str(int(epoch)), rows_indexed=rows)
 
+    def _marker(self, entity, pk) -> int:
+        v = self.ch.query_value(
+            "SELECT argMax(cursor_end, insert_version) FROM " + TABLE +
+            " WHERE entity={e:String} AND partition_key={pk:String}",
+            {"e": entity, "pk": pk}, default="")
+        try:
+            return int(v) if v not in (None, "") else 0
+        except (TypeError, ValueError):
+            return 0
+
     # ── fix / repair ────────────────────────────────────────────────────────────
     def find_pages_by_status(self, status: str, entity: Optional[str] = None) -> List[Dict]:
-        where = "status={s:String}"
+        inner = "entity={e:String}" if entity else ""
         params = {"s": status}
         if entity:
-            where += " AND entity={e:String}"
             params["e"] = entity
         return self.ch.execute(
             "SELECT entity, partition_key, page_seq, cursor_start, strategy, attempt_count "
-            "FROM " + TABLE + " FINAL WHERE " + where + " ORDER BY entity, page_seq", params)
+            f"FROM ({_latest(inner)}) WHERE status={{s:String}} ORDER BY entity, page_seq", params)
 
     def recover_stuck_pages(self, timeout_s: int, entity: Optional[str] = None) -> int:
-        where = "status='claimed' AND created_at < now64(3) - {t:UInt32}"
+        inner = "entity={e:String}" if entity else ""
         params = {"t": timeout_s}
         if entity:
-            where += " AND entity={e:String}"
             params["e"] = entity
         stuck = self.ch.execute(
             "SELECT entity, partition_key, page_seq, cursor_start, strategy "
-            "FROM " + TABLE + " FINAL WHERE " + where, params)
+            f"FROM ({_latest(inner)}) "
+            "WHERE status='claimed' AND created_at < now64(3) - {t:UInt32}", params)
         for s in stuck:
             self._record(s["entity"], "pending", str(s["strategy"]),
                          partition_key=s["partition_key"], page_seq=s["page_seq"],
@@ -143,12 +157,11 @@ class GaStateManager:
                      partition_key=partition_key, page_seq=page_seq, cursor_start=cursor_start)
 
     def find_page_gaps(self, entity, partition_key="") -> List[str]:
-        """Return cursor_start values where the keyset chain is broken
-        (a completed page's cursor_end != the next completed page's cursor_start)."""
+        """cursor_start values where the keyset chain is broken (cursor_end[k] != cursor_start[k+1])."""
+        sub = _latest("entity={e:String} AND partition_key={pk:String}")
         pages = self.ch.execute(
-            "SELECT page_seq, cursor_start, cursor_end FROM " + TABLE + " FINAL "
-            "WHERE entity={e:String} AND partition_key={pk:String} AND status='completed' "
-            "ORDER BY page_seq", {"e": entity, "pk": partition_key})
+            f"SELECT page_seq, cursor_start, cursor_end FROM ({sub}) "
+            "WHERE status='completed' ORDER BY page_seq", {"e": entity, "pk": partition_key})
         gaps = []
         prev_end = None
         for p in pages:
@@ -161,9 +174,9 @@ class GaStateManager:
     def summary(self) -> List[Dict]:
         return self.ch.execute(
             "SELECT entity, "
-            "countIf(status='completed' AND partition_key!='realtime') AS completed, "
+            "countIf(status='completed' AND partition_key!='realtime' AND partition_key!='rescan') AS completed, "
             "countIf(status='failed') AS failed, countIf(status='dead') AS dead, "
             "countIf(status='claimed') AS claimed, "
             "max(backfill_complete) AS backfill_complete, "
             "sumIf(rows_indexed, status='completed') AS rows_indexed "
-            "FROM " + TABLE + " FINAL GROUP BY entity ORDER BY entity")
+            f"FROM ({_latest()}) GROUP BY entity ORDER BY entity")

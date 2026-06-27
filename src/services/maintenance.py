@@ -69,20 +69,27 @@ class MaintenanceService:
                 if len(rows) < spec.page_size:
                     break
 
+            # Live ids in CH = ids whose latest version is not deleted (FINAL-free dedup).
+            live_ids = (f"SELECT id FROM {spec.name} GROUP BY id "
+                        f"HAVING argMax(_deleted, insert_version) = 0")
             added = int(self.ch.query_value(
-                f"SELECT count() FROM {stage} WHERE id NOT IN "
-                f"(SELECT id FROM {spec.name} FINAL WHERE _deleted=0)", default=0) or 0)
+                f"SELECT count() FROM {stage} WHERE id NOT IN ({live_ids})", default=0) or 0)
             to_delete = int(self.ch.query_value(
-                f"SELECT count() FROM {spec.name} FINAL WHERE _deleted=0 "
-                f"AND id NOT IN (SELECT id FROM {stage})", default=0) or 0)
+                f"SELECT count() FROM ({live_ids}) WHERE id NOT IN (SELECT id FROM {stage})",
+                default=0) or 0)
 
             if to_delete:
                 cols = ["id"] + [f.ch_name for f in spec.fields if f.gql_name != "id"] + _TRAILER_COLS
                 col_list = ", ".join(f"`{c}`" for c in cols)
+                # Reconstruct the latest row per disappeared id via argMax (no FINAL),
+                # re-insert it with _deleted=1.
+                amax = "id, " + ", ".join(
+                    f"argMax(`{c}`, insert_version) AS `{c}`" for c in cols if c != "id")
                 self.ch.command(
                     f"INSERT INTO {spec.name} ({col_list}, _deleted) "
-                    f"SELECT {col_list}, 1 FROM {spec.name} FINAL "
-                    f"WHERE _deleted=0 AND id NOT IN (SELECT id FROM {stage})")
+                    f"SELECT {amax}, 1 FROM {spec.name} GROUP BY id "
+                    f"HAVING argMax(_deleted, insert_version) = 0 "
+                    f"AND id NOT IN (SELECT id FROM {stage})")
 
             obs.reconcile_added_total.labels(entity=spec.name).inc(added)
             obs.reconcile_tombstoned_total.labels(entity=spec.name).inc(to_delete)
