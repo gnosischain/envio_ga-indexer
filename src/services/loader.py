@@ -102,6 +102,7 @@ class LoaderService:
         buf = []
         batch_start = after_id
         last_id = after_id
+        run_rows = 0
         t0 = time.monotonic()
         while True:
             try:
@@ -137,6 +138,10 @@ class LoaderService:
                                          written, complete, partition_key=pk, worker_id=worker_id)
                 obs.pages_total.labels(entity=spec.name, status="completed").inc()
                 obs.page_duration_seconds.labels(entity=spec.name).observe(time.monotonic() - t0)
+                run_rows += written
+                if page_seq % 10 == 0 or complete:
+                    logger.info("Backfill progress", entity=spec.name, partition_key=pk,
+                                rows=run_rows, cursor_end=last_id, page_seq=page_seq)
                 buf = []
                 batch_start = last_id
                 page_seq += 1
