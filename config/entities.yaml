@@ -86,10 +86,16 @@ entities:
     tier: field_cursor
     cursor_field: timestamp
     mutable: false
-  TransactionAction:        # large (>1M) but append-only with a creation timestamp
+  TransactionAction:        # very large (~200M) append-only action log
     tier: field_cursor
     cursor_field: timestamp
     mutable: false
+    ts_field: timestamp
+    ts_immutable: true                       # PARTITION BY toStartOfMonth(toDateTime(timestamp))
+    order_by: "avatar_id, timestamp, id"     # avatar-centric + time-range primary index (id keeps it unique)
+    indexes:
+      - {name: idx_ta_txn, expr: transaction_id, type: bloom_filter, granularity: 4}
+      - {name: idx_ta_ts,  expr: timestamp,      type: minmax,       granularity: 4}
 
   # ── full_rescan: mutable/static, no reliable monotonic-at-creation cursor ──
   Swap:                     # status flips Open->Filled in place; no usable cursor

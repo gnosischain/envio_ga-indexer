@@ -42,6 +42,8 @@ class EntitySpec:
     deletable: bool = True
 
     partition_expr: str = ""               # ClickHouse PARTITION BY expression (or "")
+    order_by: str = "id"                    # ClickHouse ORDER BY (dedup key; immutable cols only)
+    indexes: list = field(default_factory=list)  # data-skipping indexes: {name,expr,type,granularity}
     page_size: int = 1000
     rescan_interval_s: int = 300
     enabled: bool = True

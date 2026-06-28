@@ -194,6 +194,8 @@ def build_specs(schema: dict, overrides: dict):
             page_size=int(ov.get("page_size", config.PAGE_SIZE)),
             rescan_interval_s=rescan,
             enabled=enabled,
+            order_by=ov.get("order_by", "id"),
+            indexes=ov.get("indexes", []) or [],
         )
         spec.partition_expr = _partition_expr(spec, ov)
         specs.append(spec)
@@ -259,6 +261,7 @@ def generate_registry_py(specs) -> str:
         lines.append(f"        strategy=SyncStrategy.{s.strategy.name}, cursor_field={s.cursor_field!r},")
         lines.append(f"        block_field={s.block_field!r}, ts_field={s.ts_field!r}, version_field={s.version_field!r},")
         lines.append(f"        mutable={s.mutable}, deletable={s.deletable}, partition_expr={s.partition_expr!r},")
+        lines.append(f"        order_by={s.order_by!r}, indexes={s.indexes!r},")
         lines.append(f"        page_size={s.page_size}, rescan_interval_s={s.rescan_interval_s}, enabled={s.enabled},")
         lines.append(f"        fields=[{fld}],")
         lines.append("    ),")
@@ -283,10 +286,13 @@ def generate_typed_sql(specs) -> str:
         cols.append("    `ingested_at` DateTime DEFAULT now()")
         cols.append("    `_synced_block` UInt64 DEFAULT 0")
         cols.append("    `insert_version` UInt64 MATERIALIZED toUnixTimestamp64Nano(now64(9))")
+        for ix in s.indexes:
+            cols.append(f"    INDEX {ix['name']} {ix['expr']} TYPE {ix['type']} "
+                        f"GRANULARITY {ix.get('granularity', 4)}")
         out.append(",\n".join(cols))
         part = f" PARTITION BY {s.partition_expr}" if s.partition_expr else ""
         out.append(f") ENGINE = ReplacingMergeTree({s.version_column}) "
-                   f"ORDER BY (id){part};")
+                   f"ORDER BY ({s.order_by}){part};")
         out.append("")
     return "\n".join(out)
 

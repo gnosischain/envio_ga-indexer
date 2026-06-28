@@ -421,8 +421,10 @@ CREATE TABLE IF NOT EXISTS transaction_action (
     `_seen_version` UInt64 DEFAULT 0,
     `ingested_at` DateTime DEFAULT now(),
     `_synced_block` UInt64 DEFAULT 0,
-    `insert_version` UInt64 MATERIALIZED toUnixTimestamp64Nano(now64(9))
-) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (id);
+    `insert_version` UInt64 MATERIALIZED toUnixTimestamp64Nano(now64(9)),
+    INDEX idx_ta_txn transaction_id TYPE bloom_filter GRANULARITY 4,
+    INDEX idx_ta_ts timestamp TYPE minmax GRANULARITY 4
+) ENGINE = ReplacingMergeTree(insert_version) ORDER BY (avatar_id, timestamp, id) PARTITION BY toStartOfMonth(toDateTime(timestamp));
 
 -- entity: Transfer  strategy: block_cursor  mutable: False
 CREATE TABLE IF NOT EXISTS transfer (

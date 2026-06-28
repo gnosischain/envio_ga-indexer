@@ -33,14 +33,20 @@ def test_inv2_field_cursor_has_cursor():
 
 
 def test_inv3_partition_is_immutable():
-    # Pure block_cursor may partition by the immutable creation block; everything
-    # else is unpartitioned (avoids high-cardinality-partition merge storms while
-    # staying immutable + dedup-safe on the id ORDER BY key).
+    # Partition keys must be immutable: block (block_cursor), month-of-creation-ts
+    # (opt-in via ts_immutable), or none. Never a mutable column.
     for s in ENTITIES:
+        p = s.partition_expr
+        assert p == "" or p.startswith(("intDiv(", "toStartOfMonth(", "cityHash64(")), (s.gql_type, p)
         if s.strategy == SyncStrategy.BLOCK_CURSOR:
-            assert s.partition_expr.startswith("intDiv("), (s.gql_type, s.partition_expr)
-        else:
-            assert s.partition_expr == "", (s.gql_type, s.partition_expr)
+            assert p.startswith("intDiv("), (s.gql_type, p)
+
+
+def test_transaction_action_optimized():
+    ta = next(s for s in ENTITIES if s.name == "transaction_action")
+    assert ta.partition_expr.startswith("toStartOfMonth("), ta.partition_expr
+    assert ta.order_by == "avatar_id, timestamp, id"
+    assert any(ix["expr"] == "transaction_id" for ix in ta.indexes)
 
 
 def test_expiry_time_is_uint256():
