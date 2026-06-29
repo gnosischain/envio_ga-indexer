@@ -143,12 +143,23 @@ def main(argv=None):
 
 
 def _print_check(report):
-    print("== state summary ==")
+    print(f"== source head block: {report.get('head', 0):,} ==")
+    print("== backfill completeness ==")
     for r in report["summary"]:
-        print(f"  {r['entity']:<28} completed={r['completed']} failed={r['failed']} "
-              f"dead={r['dead']} claimed={r['claimed']} backfill_complete={r['backfill_complete']}")
+        e = r["entity"]
+        done = report["complete"].get(e)
+        cov = report["coverage"].get(e)
+        flag = "COMPLETE" if done else "INCOMPLETE"
+        extra = ""
+        if cov:
+            extra = f" | chunks {cov['complete']}/{cov['expected']}"
+            if cov["incomplete"]:
+                extra += f" incomplete={[c.replace('block:','') for c in cov['incomplete']]}"
+            if cov["missing"]:
+                extra += f" missing={[c.replace('block:','') for c in cov['missing']]}"
+        print(f"  {e:<28} {flag:<11} pages={r['completed']} rows={r['rows_indexed']}{extra}")
     if report["gaps"]:
-        print("== keyset gaps ==")
+        print("== keyset gaps (cursor chain breaks) ==")
         for e, g in report["gaps"].items():
             print(f"  {e}: {len(g)} gap(s) at {g[:5]}")
     for key in ("failed", "dead", "stuck"):

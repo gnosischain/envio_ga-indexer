@@ -30,6 +30,7 @@ class Config:
     # ── Pagination & throughput ─────────────────────────────────────────────
     PAGE_SIZE = int(os.getenv("PAGE_SIZE", "1000"))          # hard server cap is 1000
     BACKFILL_CONCURRENCY = int(os.getenv("BACKFILL_CONCURRENCY", "4"))
+    BACKFILL_BLOCK_CHUNK = int(os.getenv("BACKFILL_BLOCK_CHUNK", "5000000"))  # block sub-chunk size
     GQL_MAX_RPS = float(os.getenv("GQL_MAX_RPS", "10"))
     GQL_MAX_RETRIES = int(os.getenv("GQL_MAX_RETRIES", "5"))
     GQL_TIMEOUT = int(os.getenv("GQL_TIMEOUT", "120"))       # per-request total timeout (s)

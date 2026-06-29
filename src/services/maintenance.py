@@ -11,6 +11,7 @@ reprocess  : re-derive typed tables from the raw audit log (no API calls).
 """
 import json
 import time
+import urllib.request
 from typing import List, Optional
 
 from src.config import config
@@ -98,21 +99,59 @@ class MaintenanceService:
             self.ch.command(f"DROP TABLE IF EXISTS {stage}")
 
     # ── check ───────────────────────────────────────────────────────────────────
+    def _source_head(self) -> int:
+        """chain_metadata.block_height from the source (FINAL-free, no aggregate)."""
+        headers = {"Content-Type": "application/json"}
+        if config.GRAPHQL_API_KEY:
+            scheme = (config.GRAPHQL_AUTH_SCHEME + " ") if config.GRAPHQL_AUTH_SCHEME else ""
+            headers[config.GRAPHQL_AUTH_HEADER] = f"{scheme}{config.GRAPHQL_API_KEY}"
+        body = json.dumps({"query": "{ chain_metadata { block_height } }"}).encode("utf-8")
+        req = urllib.request.Request(config.GRAPHQL_ENDPOINT, data=body, headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                d = json.loads(r.read())
+            rows = d.get("data", {}).get("chain_metadata") or []
+            return int(rows[0]["block_height"]) if rows else 0
+        except Exception:
+            return 0
+
+    def chunk_coverage(self, spec: EntitySpec, head: int) -> Optional[dict]:
+        """For block-sub-chunked entities, compare expected block chunks (0..head) to
+        the chunks actually completed — catches the 'falsely complete' / missing-chunk case."""
+        if spec.strategy != SyncStrategy.BLOCK_CURSOR or not spec.block_field or not head:
+            return None
+        step = config.BACKFILL_BLOCK_CHUNK
+        expected = [f"block:{lo}-{lo + step}" for lo in range(0, head + 1, step)]
+        rows = self.ch.execute(
+            "SELECT partition_key, max(backfill_complete) AS bf, sum(rows_indexed) AS rows "
+            "FROM ga_index_state WHERE entity={e:String} AND partition_key LIKE 'block:%' "
+            "GROUP BY partition_key", {"e": spec.name})
+        state = {r["partition_key"]: (int(r["bf"]), int(r["rows"])) for r in rows}
+        complete = [c for c in expected if state.get(c, (0, 0))[0] == 1]
+        incomplete = [c for c in expected if c in state and state[c][0] == 0]
+        missing = [c for c in expected if c not in state]
+        return {"expected": len(expected), "complete": len(complete),
+                "incomplete": incomplete, "missing": missing,
+                "is_complete": not incomplete and not missing}
+
     def check(self, entities: Optional[List[str]] = None):
         specs = self._select(entities)
         names = {s.name for s in specs}
         summary = [r for r in self.state.summary() if r["entity"] in names]
-        report = {"summary": summary, "gaps": {}, "failed": [], "dead": [], "stuck": []}
+        head = self._source_head()
+        report = {"head": head, "summary": summary, "coverage": {}, "complete": {},
+                  "gaps": {}, "failed": [], "dead": [], "stuck": []}
         for s in specs:
+            report["complete"][s.name] = self.state.is_backfill_complete(s.name)
+            cov = self.chunk_coverage(s, head)
+            if cov is not None:
+                report["coverage"][s.name] = cov
             gaps = self.state.find_page_gaps(s.name)
             if gaps:
                 report["gaps"][s.name] = gaps
-        report["failed"] = self.state.find_pages_by_status("failed")
-        report["dead"] = self.state.find_pages_by_status("dead")
-        report["stuck"] = self.state.find_pages_by_status("claimed")
-        report["failed"] = [r for r in report["failed"] if r["entity"] in names]
-        report["dead"] = [r for r in report["dead"] if r["entity"] in names]
-        report["stuck"] = [r for r in report["stuck"] if r["entity"] in names]
+        report["failed"] = [r for r in self.state.find_pages_by_status("failed") if r["entity"] in names]
+        report["dead"] = [r for r in self.state.find_pages_by_status("dead") if r["entity"] in names]
+        report["stuck"] = [r for r in self.state.find_pages_by_status("claimed") if r["entity"] in names]
         return report
 
     # ── fix ───────────────────────────────────────────────────────────────────

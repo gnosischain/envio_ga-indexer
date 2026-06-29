@@ -24,7 +24,7 @@ from src.loaders.graphql_entity import GraphQLEntityLoader
 from src.utils.logger import logger
 from src import observability as obs
 
-BACKFILL_BLOCK_CHUNK = 5_000_000   # block-window size for block_cursor sub-chunking
+BACKFILL_BLOCK_CHUNK = config.BACKFILL_BLOCK_CHUNK   # block-window size for block_cursor sub-chunking
 FLUSH_ROWS = 25_000                # accumulate ~this many rows per insert (fewer parts/merges)
 
 
