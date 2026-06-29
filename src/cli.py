@@ -61,8 +61,8 @@ def print_status(ch: ClickHouse = None):
     ch = ch or ClickHouse()
     state = GaStateManager(ch)
     rows = state.summary()
-    print(f"{'entity':<28} {'backfill':<9} {'pages':>6} {'rows':>10} {'failed':>6} {'dead':>5} {'live_rows':>12}")
-    print("-" * 90)
+    print(f"{'entity':<28} {'backfill':<9} {'chunks':>6} {'pages':>6} {'failed':>6} {'dead':>5} {'live_rows':>12}")
+    print("-" * 86)
     for r in rows:
         if r["entity"].startswith("_"):
             continue
@@ -74,7 +74,7 @@ def print_status(ch: ClickHouse = None):
         except Exception:
             live = "?"
         bf = "complete" if r["backfill_complete"] else "partial"
-        print(f"{r['entity']:<28} {bf:<9} {r['completed']:>6} {r['rows_indexed']:>10} "
+        print(f"{r['entity']:<28} {bf:<9} {r.get('chunks',1):>6} {r['completed']:>6} "
               f"{r['failed']:>6} {r['dead']:>5} {str(live):>12}")
 
 

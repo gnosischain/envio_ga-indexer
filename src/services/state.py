@@ -99,8 +99,17 @@ class GaStateManager:
         return {"cursor": r["c"] or "", "page_seq": int(r["ps"] or 0),
                 "complete": bool(r["done"])}
 
-    def is_backfill_complete(self, entity, partition_key="") -> bool:
-        return self.resume_position(entity, partition_key)["complete"]
+    def is_backfill_complete(self, entity) -> bool:
+        """Complete only when EVERY chunk is complete. backfill_complete is per-page
+        (last page of a chunk = 1), so: chunk_complete = max over pages; entity = min over chunks."""
+        sub = _latest("entity={e:String} AND partition_key NOT IN ('realtime','rescan')")
+        rows = self.ch.execute(
+            "SELECT min(chunk_complete) AS done, count() AS n FROM "
+            f"(SELECT partition_key, max(backfill_complete) AS chunk_complete FROM ({sub}) "
+            "GROUP BY partition_key)", {"e": entity})
+        if not rows or not rows[0]["n"]:
+            return False
+        return bool(rows[0]["done"])
 
     # ── realtime watermark / rescan marker (argMax already dedups; no FINAL) ─────
     def get_watermark(self, entity) -> int:
@@ -172,11 +181,18 @@ class GaStateManager:
 
     # ── summary ─────────────────────────────────────────────────────────────────
     def summary(self) -> List[Dict]:
+        # Two-level: per chunk, chunk_complete = max(backfill_complete) over its pages;
+        # per entity, backfill_complete = min(chunk_complete) over chunks. So a
+        # block-sub-chunked entity is "complete" only when EVERY chunk finished.
+        sub = _latest()
         return self.ch.execute(
-            "SELECT entity, "
-            "countIf(status='completed' AND partition_key!='realtime' AND partition_key!='rescan') AS completed, "
-            "countIf(status='failed') AS failed, countIf(status='dead') AS dead, "
-            "countIf(status='claimed') AS claimed, "
-            "max(backfill_complete) AS backfill_complete, "
-            "sumIf(rows_indexed, status='completed') AS rows_indexed "
-            f"FROM ({_latest()}) GROUP BY entity ORDER BY entity")
+            "SELECT entity, sum(c_pages) AS completed, sum(c_failed) AS failed, "
+            "sum(c_dead) AS dead, sum(c_claimed) AS claimed, count() AS chunks, "
+            "min(chunk_complete) AS backfill_complete, sum(c_rows) AS rows_indexed FROM ("
+            "  SELECT entity, partition_key, max(backfill_complete) AS chunk_complete, "
+            "  countIf(status='completed') AS c_pages, countIf(status='failed') AS c_failed, "
+            "  countIf(status='dead') AS c_dead, countIf(status='claimed') AS c_claimed, "
+            "  sumIf(rows_indexed, status='completed') AS c_rows "
+            f"  FROM ({sub}) WHERE partition_key NOT IN ('realtime','rescan') "
+            "  GROUP BY entity, partition_key"
+            ") GROUP BY entity ORDER BY entity")
