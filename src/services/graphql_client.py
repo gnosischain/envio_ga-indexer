@@ -169,21 +169,33 @@ class GraphQLClient:
         return data.get(spec.root_field) or []
 
     async def fetch_cursor(self, spec: EntitySpec, after_value: Optional[int],
+                           after_id: Optional[str] = None,
                            limit: Optional[int] = None) -> List[Dict[str, Any]]:
-        """Field-cursor page: WHERE cursor_field >= after_value, ORDER BY (cursor_field, id).
+        """Field-cursor page. Two index-friendly modes (no `_or` compound keyset, which
+        Hasura/Postgres cannot serve from the index and which 504s on large tables like
+        transaction_action, ~200M rows):
 
-        Uses a plain `>=` rather than an `_or` compound keyset: Hasura/Postgres cannot use the
-        index for the `_or` form and times out (504) on large tables (e.g. transaction_action,
-        ~200M rows). The boundary cursor value's rows are re-read on each page; ReplacingMergeTree
-        dedups them. The caller advances after_value to the last row's cursor value, which makes
-        forward progress as long as no single cursor value fills an entire page.
+          - advance (after_id falsy): WHERE cursor_field >= after_value,
+            ORDER BY (cursor_field, id). Walks forward across cursor values. The boundary
+            value's rows are re-read each page and deduped by ReplacingMergeTree. The caller
+            advances after_value to the last row's cursor value.
+          - drain (after_id given): WHERE cursor_field == after_value AND id > after_id,
+            ORDER BY id. Pages through a single *dense* cursor value — one where more than
+            page_size rows share the same value (e.g. day-boundary timestamps in
+            transaction_action) — which the advance form cannot get past.
         """
         if not spec.cursor_field:
             raise GraphQLError(f"{spec.gql_type} has no cursor_field for fetch_cursor")
         limit = limit or spec.page_size
         cf = spec.cursor_field
-        where = f"where: {{{cf}: {{_gte: {int(after_value or 0)}}}}}, "
-        query = (f"{{ {spec.root_field}({where}order_by: [{{{cf}: asc}}, {{id: asc}}], limit: {limit}) "
+        if after_id:
+            where = (f"where: {{{cf}: {{_eq: {int(after_value or 0)}}}, "
+                     f"id: {{_gt: {_gql_str(after_id)}}}}}, ")
+            order = "order_by: {id: asc}"
+        else:
+            where = f"where: {{{cf}: {{_gte: {int(after_value or 0)}}}}}, "
+            order = f"order_by: [{{{cf}: asc}}, {{id: asc}}]"
+        query = (f"{{ {spec.root_field}({where}{order}, limit: {limit}) "
                  f"{{ {_selection(spec, False)} }} }}")
         data = await self.execute(query, operation="cursor")
         return data.get(spec.root_field) or []
