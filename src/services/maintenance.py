@@ -51,33 +51,54 @@ class MaintenanceService:
             logger.info("Reconcile skipping non-deletable entities", entities=skipped)
         async with GraphQLClient() as gc:
             for spec in specs:
-                await self._reconcile_entity(spec, gc)
+                try:
+                    await self._reconcile_entity(spec, gc)
+                except Exception as e:  # isolate: one entity's failure must not abort the sweep
+                    logger.error("Reconcile entity failed", entity=spec.name, error=str(e)[:200])
 
     async def _reconcile_entity(self, spec: EntitySpec, gc):
         stage = f"_reconcile_{spec.name}"
+        walk_start_ns = time.time_ns()          # race fence: rows touched after this are exempt
         self.ch.command(f"DROP TABLE IF EXISTS {stage}")
         self.ch.command(f"CREATE TABLE {stage} (id String) ENGINE = MergeTree ORDER BY id")
         live = 0
         after = ""
+        walk_finished = False
         try:
             while True:
                 rows = await gc.fetch_keyset(spec, after_id=after, ids_only=True, limit=spec.page_size)
                 if not rows:
+                    walk_finished = True
                     break
                 self.ch.insert_batch(stage, [{"id": r["id"]} for r in rows])
                 live += len(rows)
                 after = rows[-1]["id"]
                 if len(rows) < spec.page_size:
+                    walk_finished = True
                     break
+
+            # Recovery-safety: NEVER tombstone from a partial walk. Only diff after a
+            # provably complete enumeration (reached a short/empty page). A crash mid-walk
+            # leaves the stage to be rebuilt next run; no false deletes.
+            if not walk_finished:
+                logger.warning("Reconcile walk incomplete; skipping tombstone", entity=spec.name)
+                return
 
             # Live ids in CH = ids whose latest version is not deleted (FINAL-free dedup).
             live_ids = (f"SELECT id FROM {spec.name} GROUP BY id "
                         f"HAVING argMax(_deleted, insert_version) = 0")
             added = int(self.ch.query_value(
                 f"SELECT count() FROM {stage} WHERE id NOT IN ({live_ids})", default=0) or 0)
-            to_delete = int(self.ch.query_value(
-                f"SELECT count() FROM ({live_ids}) WHERE id NOT IN (SELECT id FROM {stage})",
-                default=0) or 0)
+
+            # Tombstone candidates: latest version is live, the id is gone from the source,
+            # AND the row was not touched since the walk started (max(insert_version) <
+            # walk_start_ns) — so a row a concurrent realtime inserted/updated mid-walk is
+            # never falsely tombstoned (a truly-deleted row is caught next cycle).
+            gone = (f"SELECT id FROM {spec.name} GROUP BY id "
+                    f"HAVING argMax(_deleted, insert_version) = 0 "
+                    f"AND max(insert_version) < {walk_start_ns} "
+                    f"AND id NOT IN (SELECT id FROM {stage})")
+            to_delete = int(self.ch.query_value(f"SELECT count() FROM ({gone})", default=0) or 0)
 
             if to_delete:
                 cols = ["id"] + [f.ch_name for f in spec.fields if f.gql_name != "id"] + _TRAILER_COLS
@@ -90,6 +111,7 @@ class MaintenanceService:
                     f"INSERT INTO {spec.name} ({col_list}, _deleted) "
                     f"SELECT {amax}, 1 FROM {spec.name} GROUP BY id "
                     f"HAVING argMax(_deleted, insert_version) = 0 "
+                    f"AND max(insert_version) < {walk_start_ns} "
                     f"AND id NOT IN (SELECT id FROM {stage})")
 
             obs.reconcile_added_total.labels(entity=spec.name).inc(added)
@@ -140,9 +162,10 @@ class MaintenanceService:
         summary = [r for r in self.state.summary() if r["entity"] in names]
         head = self._source_head()
         report = {"head": head, "summary": summary, "coverage": {}, "complete": {},
-                  "gaps": {}, "failed": [], "dead": [], "stuck": []}
+                  "deletable": {}, "gaps": {}, "failed": [], "dead": [], "stuck": []}
         for s in specs:
             report["complete"][s.name] = self.state.is_backfill_complete(s.name)
+            report["deletable"][s.name] = s.deletable
             cov = self.chunk_coverage(s, head)
             if cov is not None:
                 report["coverage"][s.name] = cov

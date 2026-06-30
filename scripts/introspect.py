@@ -172,7 +172,7 @@ def build_specs(schema: dict, overrides: dict):
         strategy = SyncStrategy(ov.get("tier", "full_rescan"))
         cursor_field = ov.get("cursor_field")
         mutable = bool(ov.get("mutable", True))
-        deletable = bool(ov.get("deletable", True))
+        deletable = bool(ov.get("deletable", defaults.get("deletable", False)))
         version_field = ov.get("version_field")
         ts_field = ov.get("ts_field", ts_field)
         block_field = ov.get("block_field", block_field)

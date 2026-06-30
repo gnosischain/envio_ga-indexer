@@ -42,6 +42,21 @@ def test_inv3_partition_is_immutable():
             assert p.startswith("intDiv("), (s.gql_type, p)
 
 
+def test_deletable_is_opt_in():
+    by = {s.name: s.deletable for s in ENTITIES}
+    # huge append-only logs + large dual entities must NOT be delete-walked
+    for n in ("transfer", "transaction", "transaction_action", "cashback_status_history",
+              "notification", "metri_pay_delay_module_owner", "avatar", "token",
+              "trust_relation", "guardian_module"):
+        assert by[n] is False, n
+    # small mutable/lifecycle entities are delete-checked
+    for n in ("cashback", "avatar_balance", "avatar_total_balance_v2", "profile", "swap",
+              "circles_backing", "auto_topup", "investment_account", "metri_balance",
+              "metri_order", "pending_recovery", "v1_token_pending_stop"):
+        assert by[n] is True, n
+    assert sum(1 for v in by.values() if v) == 18
+
+
 def test_transaction_action_optimized():
     ta = next(s for s in ENTITIES if s.name == "transaction_action")
     assert ta.partition_expr.startswith("toStartOfMonth("), ta.partition_expr

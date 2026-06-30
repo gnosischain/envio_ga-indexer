@@ -45,6 +45,8 @@ def create_parser() -> argparse.ArgumentParser:
 
     rec = sub.add_parser("reconcile", help="delete detection (id-diff)")
     rec.add_argument("--entities")
+    rec.add_argument("--loop", action="store_true",
+                     help="run repeatedly, sleeping RECONCILE_INTERVAL_S between sweeps")
 
     maint = sub.add_parser("maintain", help="maintenance").add_subparsers(dest="maint_cmd")
     chk = maint.add_parser("check"); chk.add_argument("--entities")
@@ -118,7 +120,19 @@ def main(argv=None):
         from src.services.maintenance import MaintenanceService
         svc = MaintenanceService()
         try:
-            asyncio.run(svc.reconcile(_entities(args.entities)))
+            if args.loop:
+                async def _loop():
+                    while True:
+                        t0 = asyncio.get_event_loop().time()
+                        try:
+                            await svc.reconcile(_entities(args.entities))
+                        except Exception as e:
+                            logger.error("Reconcile sweep error", error=str(e))
+                        elapsed = asyncio.get_event_loop().time() - t0
+                        await asyncio.sleep(max(0.0, config.RECONCILE_INTERVAL_S - elapsed))
+                asyncio.run(_loop())
+            else:
+                asyncio.run(svc.reconcile(_entities(args.entities)))
         finally:
             svc.close()
     elif cmd == "maintain":
@@ -150,6 +164,7 @@ def _print_check(report):
         done = report["complete"].get(e)
         cov = report["coverage"].get(e)
         flag = "COMPLETE" if done else "INCOMPLETE"
+        deldot = "del" if report.get("deletable", {}).get(e) else "   "
         extra = ""
         if cov:
             extra = f" | chunks {cov['complete']}/{cov['expected']}"
@@ -157,7 +172,7 @@ def _print_check(report):
                 extra += f" incomplete={[c.replace('block:','') for c in cov['incomplete']]}"
             if cov["missing"]:
                 extra += f" missing={[c.replace('block:','') for c in cov['missing']]}"
-        print(f"  {e:<28} {flag:<11} pages={r['completed']} rows={r['rows_indexed']}{extra}")
+        print(f"  {e:<28} {flag:<11} [{deldot}] pages={r['completed']} rows={r['rows_indexed']}{extra}")
     if report["gaps"]:
         print("== keyset gaps (cursor chain breaks) ==")
         for e, g in report["gaps"].items():

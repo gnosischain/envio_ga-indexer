@@ -14,13 +14,20 @@
 #
 # Tiers reflect the verified field inventory. Partitioning: pure block_cursor
 # partitions by intDiv(block_number,1e6) (immutable creation block); everything
-# else by cityHash64(id)%64 (immutable, dedup-safe). Unlisted entities default to
-# full_rescan / mutable:true / id-hash partition. deletable defaults true so every
-# entity is covered by the reconcile id-diff (user choice: reconcile all).
+# else unpartitioned (immutable, dedup-safe). Unlisted entities default to
+# full_rescan / mutable:true / unpartitioned.
+#
+# deletable is OPT-IN (defaults.deletable=false): the source exposes no delete
+# signal, so delete-detection is a full id-walk (expensive). Only entities that
+# can actually delete upstream are marked deletable:true; append-only on-chain
+# logs and the huge tables (transfer/transaction/transaction_action) stay false
+# so reconcile never walks them. Use "measure then flip": run
+# `reconcile --entities X`; if it tombstones >0 rows, set deletable:true.
 
 defaults:
   rescan_interval_s: 300
   enabled: true
+  deletable: false        # opt-in; only mutable/lifecycle entities set deletable:true below
 
 entities:
   # ── block_cursor: immutable, append-only event logs ──────────────────────
@@ -62,18 +69,22 @@ entities:
     tier: field_cursor
     cursor_field: lastStatusUpdate
     mutable: true
+    deletable: true
   AvatarBalance:
     tier: field_cursor
     cursor_field: lastCalculated
     mutable: true
+    deletable: true
   AvatarTotalBalanceV2:
     tier: field_cursor
     cursor_field: lastPendingUpdate
     mutable: true
+    deletable: true
   Profile:
     tier: field_cursor
     cursor_field: lastUpdatedBlockNumber
     mutable: true
+    deletable: true
   CashbackStatusHistory:
     tier: field_cursor
     cursor_field: timestamp
@@ -97,21 +108,46 @@ entities:
       - {name: idx_ta_txn, expr: transaction_id, type: bloom_filter, granularity: 4}
       - {name: idx_ta_ts,  expr: timestamp,      type: minmax,       granularity: 4}
 
-  # ── full_rescan: mutable/static, no reliable monotonic-at-creation cursor ──
+  # ── full_rescan mutable/lifecycle: deletable:true (small; cheap reconcile) ──
   Swap:                     # status flips Open->Filled in place; no usable cursor
     tier: full_rescan
     mutable: true
     rescan_interval_s: 1800
+    deletable: true
   CirclesBacking:           # lifecycle (initiated->completed); completedAt null until done
     tier: full_rescan
     mutable: true
+    deletable: true
   Metri_Pay_DelayModule:    # lastTransactionTimestamp may be null at creation
     tier: full_rescan
     mutable: true
+    deletable: true
   Metri_Pay_RolesModule:    # lastSpentAt null until first spend
     tier: full_rescan
     mutable: true
-  # Defaulted to full_rescan (no override needed):
-  #   AutoTopup, CoordinatorState, EarnedFromInvite, GnosisAppUser,
-  #   HistoricalGNOBalance, InvestmentAccount, Metri_Balance, Metri_Order,
-  #   PendingRecovery, V1TokenPendingStop
+    deletable: true
+  # full_rescan (tier defaults to full_rescan), marked deletable so reconcile covers them:
+  AutoTopup:
+    deletable: true
+  CoordinatorState:
+    deletable: true
+  EarnedFromInvite:
+    deletable: true
+  GnosisAppUser:
+    deletable: true
+  HistoricalGNOBalance:
+    deletable: true
+  InvestmentAccount:
+    deletable: true
+  Metri_Balance:
+    deletable: true
+  Metri_Order:
+    deletable: true
+  PendingRecovery:
+    deletable: true
+  V1TokenPendingStop:
+    deletable: true
+  # Left deletable:false (default) — append-only logs + large dual entities that
+  # update-in-place rather than delete (rescan catches changes): Transfer, Transaction,
+  # TransactionAction, CashbackStatusHistory, Notification, Metri_Pay_DelayModuleOwner,
+  # Avatar, Token, TrustRelation, GuardianModule. Flip to true only if measured to delete.

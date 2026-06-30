@@ -22,6 +22,13 @@ queryable mirror), structured like `beacon-indexer` and reusing `cryo-indexer`'s
 ## Correctness invariants
 - **INV-1 (deletes):** an id-keyed append-only mirror can't remove rows. A periodic **reconcile**
   (id-only full keyset walk + id-set diff) tombstones rows that disappeared upstream (`_deleted=1`).
+  The source exposes no delete signal, so the id-walk is the only detection — therefore it is
+  **opt-in**: `deletable` defaults to `false` and only mutable/lifecycle entities are walked. The
+  huge append-only on-chain tables (`transfer`, `transaction`, `transaction_action`, event logs) and
+  large dual entities stay `deletable:false` (they never delete; rescan catches in-place changes), so
+  reconcile never walks them. The walk is **recovery-safe** (tombstones only after a provably
+  complete walk) and **race-safe** (an `insert_version` fence exempts rows a concurrent `realtime`
+  touched mid-walk). `reconcile --loop` runs it as a standalone service; or schedule it via cron.
 - **INV-2 (cursor choice):** `block_cursor` is used **only** for entities asserted immutable. Mutable
   entities use `field_cursor` (monotonic field) or `full_rescan` / `dual` (periodic full body re-walk),
   because an id-only reconcile catches deletes/inserts but not in-place field updates.
@@ -127,3 +134,11 @@ docker compose --profile reconcile  up
   `SETTINGS select_sequential_consistency=1` to read the latest state.
 - Adding/retiring an entity or field: edit `config/entities.yaml`, run `introspect` (it diffs and
   regenerates), then `migrate`. New entities are not auto-enabled.
+- **Which entities are `deletable`?** Default is `false`. Use *measure then flip*: run
+  `python -m src.main reconcile --entities X` a few times; if it tombstones `>0` rows the entity
+  deletes upstream → set `deletable: true` in `config/entities.yaml` and re-run `introspect`. If it
+  stays `0`, leave it `false`. `maintain check` lists each entity's `[del]` flag. A wrong guess is
+  cheap (an extra small id-walk, or a discoverable staleness) — never a runaway or false mass-delete.
+- **Reorgs on append-only block tables** (rare): a reorged-out tx is repaired with
+  `make fix ENTITIES=transfer BLOCK_RANGE=lo:hi` (delete-then-reinsert the window); widen
+  `REALTIME_OVERLAP_BLOCKS` if reorgs are deeper than the overlap.

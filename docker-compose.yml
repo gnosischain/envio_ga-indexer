@@ -42,7 +42,8 @@ services:
   reconcile:
     <<: *base
     profiles: ["reconcile"]
-    command: ["python", "-m", "src.main", "reconcile"]
+    command: ["python", "-m", "src.main", "reconcile", "--loop"]
+    restart: unless-stopped
 
   maintenance:
     <<: *base
