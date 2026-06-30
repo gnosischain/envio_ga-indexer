@@ -26,6 +26,7 @@ from src import observability as obs
 
 BACKFILL_BLOCK_CHUNK = config.BACKFILL_BLOCK_CHUNK   # block-window size for block_cursor sub-chunking
 FLUSH_ROWS = 25_000                # accumulate ~this many rows per insert (fewer parts/merges)
+FIELD_MAX_PAGES_PER_TICK = 500     # cap field_cursor catch-up per tick so others aren't starved
 
 
 class _WorkItem:
@@ -207,29 +208,33 @@ class LoaderService:
             logger.info("Realtime block sync", entity=spec.name, rows=total, cursor_end=str(head))
 
     async def _rt_field(self, spec, gc, head):
-        cf_ch = spec.cursor_ch_name
         wm = self.state.get_watermark(spec.name)
         if wm == 0:
             wm = self._bootstrap_field(spec)
         loader = self.loader_for(spec)
         after_val = wm
-        after_id = ""
         max_seen = wm
-        first = True
         total = 0
-        while True:
-            rows = await gc.fetch_cursor(spec, after_value=after_val,
-                                         after_id=("" if first else after_id), limit=spec.page_size)
+        pages = 0
+        while pages < FIELD_MAX_PAGES_PER_TICK:
+            rows = await gc.fetch_cursor(spec, after_value=after_val, limit=spec.page_size)
             if not rows:
                 break
             total += await loader.write_rows(rows, synced_block=head)
-            last = rows[-1]
-            after_val = _as_int(last.get(spec.cursor_field))
-            after_id = last["id"]
-            max_seen = max(max_seen, after_val)
-            first = False
-            if len(rows) < spec.page_size:
+            pages += 1
+            last_ts = _as_int(rows[-1].get(spec.cursor_field))
+            full = len(rows) >= spec.page_size
+            if last_ts <= after_val:
+                # whole page sits at a single cursor value -> can't advance via >=; stop to
+                # avoid an infinite loop (would only happen if one second has >page_size rows).
+                if full:
+                    logger.warning("Field cursor stalled at dense value", entity=spec.name, value=after_val)
                 break
+            after_val = last_ts
+            max_seen = max(max_seen, last_ts)
+            if not full:
+                break
+        # max_seen advances even when capped, so the next tick resumes the catch-up.
         self.state.set_watermark(spec.name, spec.strategy, max_seen, rows=total)
         obs.entity_watermark.labels(entity=spec.name).set(max_seen)
         if total:

@@ -169,24 +169,20 @@ class GraphQLClient:
         return data.get(spec.root_field) or []
 
     async def fetch_cursor(self, spec: EntitySpec, after_value: Optional[int],
-                           after_id: str = "", limit: Optional[int] = None) -> List[Dict[str, Any]]:
-        """Compound (cursor_field, id) keyset page for field_cursor entities.
+                           limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Field-cursor page: WHERE cursor_field >= after_value, ORDER BY (cursor_field, id).
 
-        First page: pass after_id="" -> WHERE cursor_field >= after_value.
-        Subsequent: pass the last (value, id) -> strict compound > (value, id).
+        Uses a plain `>=` rather than an `_or` compound keyset: Hasura/Postgres cannot use the
+        index for the `_or` form and times out (504) on large tables (e.g. transaction_action,
+        ~200M rows). The boundary cursor value's rows are re-read on each page; ReplacingMergeTree
+        dedups them. The caller advances after_value to the last row's cursor value, which makes
+        forward progress as long as no single cursor value fills an entire page.
         """
         if not spec.cursor_field:
             raise GraphQLError(f"{spec.gql_type} has no cursor_field for fetch_cursor")
         limit = limit or spec.page_size
         cf = spec.cursor_field
-        if after_id:
-            where = (f"where: {{_or: ["
-                     f"{{{cf}: {{_gt: {int(after_value)}}}}}, "
-                     f"{{{cf}: {{_eq: {int(after_value)}}}, id: {{_gt: {_gql_str(after_id)}}}}}"
-                     f"]}}, ")
-        else:
-            start = int(after_value or 0)
-            where = f"where: {{{cf}: {{_gte: {start}}}}}, "
+        where = f"where: {{{cf}: {{_gte: {int(after_value or 0)}}}}}, "
         query = (f"{{ {spec.root_field}({where}order_by: [{{{cf}: asc}}, {{id: asc}}], limit: {limit}) "
                  f"{{ {_selection(spec, False)} }} }}")
         data = await self.execute(query, operation="cursor")
