@@ -6,11 +6,11 @@
 CREATE TABLE IF NOT EXISTS ga_index_state (
     entity        String,
     partition_key String DEFAULT '',
-    strategy      Enum8('block_cursor' = 1, 'field_cursor' = 2, 'full_rescan' = 3, 'reconcile' = 4),
+    strategy      LowCardinality(String) DEFAULT '',
     page_seq      UInt64 DEFAULT 0,
     cursor_start  String DEFAULT '',
     cursor_end    String DEFAULT '',
-    status        Enum8('pending' = 1, 'claimed' = 2, 'completed' = 3, 'failed' = 4, 'dead' = 5),
+    status        LowCardinality(String) DEFAULT '',
     backfill_complete UInt8 DEFAULT 0,
     worker_id     String DEFAULT '',
     rows_indexed  UInt32 DEFAULT 0,
