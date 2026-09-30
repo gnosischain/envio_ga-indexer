@@ -145,8 +145,12 @@ entities:
     deletable: true
   PendingRecovery:
     deletable: true
-  V1TokenPendingStop:
-    deletable: true
+  # V1TokenPendingStop was removed upstream (gone from query_root, found 2026-09-30).
+  # Its envio_ga.v1_token_pending_stop table is kept as history; nothing writes it.
+
+  # ── new upstream entities, registered but not synced until onboarded ──────
+  AffiliateGroupMembership: # appeared upstream by 2026-09-30; no envio_ga table yet
+    enabled: false          # create its table (100_typed_entities.sql) before enabling
   # Left deletable:false (default) — append-only logs + large dual entities that
   # update-in-place rather than delete (rescan catches changes): Transfer, Transaction,
   # TransactionAction, CashbackStatusHistory, Notification, Metri_Pay_DelayModuleOwner,

@@ -3,6 +3,15 @@ from src.registry.schema import EntitySpec, FieldSpec, SyncStrategy
 
 ENTITIES = [
     EntitySpec(
+        name='affiliate_group_membership', gql_type='AffiliateGroupMembership', root_field='AffiliateGroupMembership',
+        strategy=SyncStrategy.FULL_RESCAN, cursor_field=None,
+        block_field='blockNumber', ts_field='timestamp', version_field=None,
+        mutable=True, deletable=False, partition_expr='',
+        order_by='id', indexes=[],
+        page_size=1000, rescan_interval_s=300, enabled=False,
+        fields=[FieldSpec('avatar_id', 'avatar_id', 'String', False), FieldSpec('blockNumber', 'block_number', 'UInt64', False), FieldSpec('group_id', 'group_id', 'String', False), FieldSpec('id', 'id', 'String', False), FieldSpec('isActive', 'is_active', 'Bool', False), FieldSpec('logIndex', 'log_index', 'Int64', False), FieldSpec('timestamp', 'timestamp', 'Int64', False)],
+    ),
+    EntitySpec(
         name='auto_topup', gql_type='AutoTopup', root_field='AutoTopup',
         strategy=SyncStrategy.FULL_RESCAN, cursor_field=None,
         block_field=None, ts_field=None, version_field=None,
@@ -18,7 +27,7 @@ ENTITIES = [
         mutable=True, deletable=False, partition_expr='',
         order_by='id', indexes=[],
         page_size=1000, rescan_interval_s=3600, enabled=True,
-        fields=[FieldSpec('acceptedInviteTimestamp', 'accepted_invite_timestamp', 'Int64', False), FieldSpec('avatarType', 'avatar_type', 'LowCardinality(String)', False), FieldSpec('blockNumber', 'block_number', 'UInt64', False), FieldSpec('cidV0', 'cid_v0', 'String', True), FieldSpec('earnedFromInvites', 'earned_from_invites', 'Int256', False), FieldSpec('feeCollectionAddress', 'fee_collection_address', 'String', True), FieldSpec('groupOwner', 'group_owner', 'String', True), FieldSpec('id', 'id', 'String', False), FieldSpec('invitedBy', 'invited_by', 'String', True), FieldSpec('isBaseGroup', 'is_base_group', 'Bool', False), FieldSpec('isEarlySupporter', 'is_early_supporter', 'Bool', False), FieldSpec('lastMint', 'last_mint', 'Int64', True), FieldSpec('logIndex', 'log_index', 'Int64', False), FieldSpec('migrated', 'migrated', 'Bool', False), FieldSpec('mintHandlerAddress', 'mint_handler_address', 'String', True), FieldSpec('primaryGroup', 'primary_group', 'String', True), FieldSpec('profile_id', 'profile_id', 'String', True), FieldSpec('timestamp', 'timestamp', 'Int64', False), FieldSpec('token_id', 'token_id', 'String', True), FieldSpec('transactionHash', 'transaction_hash', 'String', False), FieldSpec('transactionIndex', 'transaction_index', 'Int64', False), FieldSpec('treasury', 'treasury', 'String', True), FieldSpec('trustsGivenCount', 'trusts_given_count', 'Int64', False), FieldSpec('trustsGivenCountV1', 'trusts_given_count_v1', 'Int64', False), FieldSpec('trustsMutualCount', 'trusts_mutual_count', 'Int64', False), FieldSpec('trustsMutualCountV1', 'trusts_mutual_count_v1', 'Int64', False), FieldSpec('trustsReceivedCount', 'trusts_received_count', 'Int64', False), FieldSpec('trustsReceivedCountV1', 'trusts_received_count_v1', 'Int64', False), FieldSpec('trustsTwoWayCount', 'trusts_two_way_count', 'Int64', False), FieldSpec('v1Stopped', 'v1_stopped', 'Bool', False), FieldSpec('v1Token_id', 'v1_token_id', 'String', True), FieldSpec('verificationBadge', 'verification_badge', 'LowCardinality(String)', False), FieldSpec('version', 'version', 'Int64', False), FieldSpec('wrappedTokenDemurrage_id', 'wrapped_token_demurrage_id', 'String', True), FieldSpec('wrappedTokenId', 'wrapped_token_id', 'String', True), FieldSpec('wrappedTokenStatic_id', 'wrapped_token_static_id', 'String', True)],
+        fields=[FieldSpec('acceptedInviteTimestamp', 'accepted_invite_timestamp', 'Int64', False), FieldSpec('avatarType', 'avatar_type', 'LowCardinality(String)', False), FieldSpec('blockNumber', 'block_number', 'UInt64', False), FieldSpec('cidV0', 'cid_v0', 'String', True), FieldSpec('earnedFromInvites', 'earned_from_invites', 'Int256', False), FieldSpec('feeCollectionAddress', 'fee_collection_address', 'String', True), FieldSpec('groupOwner', 'group_owner', 'String', True), FieldSpec('id', 'id', 'String', False), FieldSpec('invitedBy', 'invited_by', 'String', True), FieldSpec('isBaseGroup', 'is_base_group', 'Bool', False), FieldSpec('isEarlySupporter', 'is_early_supporter', 'Bool', False), FieldSpec('lastMint', 'last_mint', 'Int64', True), FieldSpec('lifetimeCashback', 'lifetime_cashback', 'Int256', False), FieldSpec('logIndex', 'log_index', 'Int64', False), FieldSpec('mintHandlerAddress', 'mint_handler_address', 'String', True), FieldSpec('primaryGroup', 'primary_group', 'String', True), FieldSpec('profile_id', 'profile_id', 'String', True), FieldSpec('timestamp', 'timestamp', 'Int64', False), FieldSpec('token_id', 'token_id', 'String', True), FieldSpec('transactionHash', 'transaction_hash', 'String', False), FieldSpec('transactionIndex', 'transaction_index', 'Int64', False), FieldSpec('treasury', 'treasury', 'String', True), FieldSpec('trustsGivenCount', 'trusts_given_count', 'Int64', False), FieldSpec('trustsMutualCount', 'trusts_mutual_count', 'Int64', False), FieldSpec('trustsReceivedCount', 'trusts_received_count', 'Int64', False), FieldSpec('trustsTwoWayCount', 'trusts_two_way_count', 'Int64', False), FieldSpec('verificationBadge', 'verification_badge', 'LowCardinality(String)', False), FieldSpec('wrappedTokenDemurrage_id', 'wrapped_token_demurrage_id', 'String', True), FieldSpec('wrappedTokenStatic_id', 'wrapped_token_static_id', 'String', True)],
     ),
     EntitySpec(
         name='avatar_balance', gql_type='AvatarBalance', root_field='AvatarBalance',
@@ -207,7 +216,7 @@ ENTITIES = [
         mutable=True, deletable=False, partition_expr='',
         order_by='id', indexes=[],
         page_size=1000, rescan_interval_s=3600, enabled=True,
-        fields=[FieldSpec('blockNumber', 'block_number', 'UInt64', False), FieldSpec('id', 'id', 'String', False), FieldSpec('logIndex', 'log_index', 'Int64', False), FieldSpec('timestamp', 'timestamp', 'Int64', False), FieldSpec('tokenOwner_id', 'token_owner_id', 'String', False), FieldSpec('tokenType', 'token_type', 'LowCardinality(String)', False), FieldSpec('totalSupply', 'total_supply', 'Int256', False), FieldSpec('transactionHash', 'transaction_hash', 'String', False), FieldSpec('transactionIndex', 'transaction_index', 'Int64', False), FieldSpec('version', 'version', 'Int64', False)],
+        fields=[FieldSpec('blockNumber', 'block_number', 'UInt64', False), FieldSpec('id', 'id', 'String', False), FieldSpec('logIndex', 'log_index', 'Int64', False), FieldSpec('timestamp', 'timestamp', 'Int64', False), FieldSpec('tokenOwner_id', 'token_owner_id', 'String', False), FieldSpec('tokenType', 'token_type', 'LowCardinality(String)', False), FieldSpec('totalSupply', 'total_supply', 'Int256', False), FieldSpec('transactionHash', 'transaction_hash', 'String', False), FieldSpec('transactionIndex', 'transaction_index', 'Int64', False)],
     ),
     EntitySpec(
         name='transaction', gql_type='Transaction', root_field='Transaction',
@@ -234,7 +243,7 @@ ENTITIES = [
         mutable=False, deletable=False, partition_expr='intDiv(block_number, 1000000)',
         order_by='id', indexes=[],
         page_size=1000, rescan_interval_s=300, enabled=True,
-        fields=[FieldSpec('blockNumber', 'block_number', 'UInt64', False), FieldSpec('extraData', 'extra_data', 'String', True), FieldSpec('from', 'from', 'String', False), FieldSpec('id', 'id', 'String', False), FieldSpec('isPartOfStreamOrHub', 'is_part_of_stream_or_hub', 'Bool', False), FieldSpec('logIndex', 'log_index', 'Int64', False), FieldSpec('operator', 'operator', 'String', True), FieldSpec('participants', 'participants', 'String', True), FieldSpec('primaryGroup_id', 'primary_group_id', 'String', True), FieldSpec('to', 'to', 'String', False), FieldSpec('token', 'token', 'String', False), FieldSpec('transactionHash', 'transaction_hash', 'String', False), FieldSpec('transferType', 'transfer_type', 'LowCardinality(String)', False), FieldSpec('value', 'value', 'Int256', False), FieldSpec('version', 'version', 'Int64', False)],
+        fields=[FieldSpec('blockNumber', 'block_number', 'UInt64', False), FieldSpec('extraData', 'extra_data', 'String', True), FieldSpec('from', 'from', 'String', False), FieldSpec('id', 'id', 'String', False), FieldSpec('isPartOfStreamOrHub', 'is_part_of_stream_or_hub', 'Bool', False), FieldSpec('logIndex', 'log_index', 'Int64', False), FieldSpec('operator', 'operator', 'String', True), FieldSpec('participants', 'participants', 'String', True), FieldSpec('primaryGroup_id', 'primary_group_id', 'String', True), FieldSpec('to', 'to', 'String', False), FieldSpec('token', 'token', 'String', False), FieldSpec('transactionHash', 'transaction_hash', 'String', False), FieldSpec('transferType', 'transfer_type', 'LowCardinality(String)', False), FieldSpec('value', 'value', 'Int256', False)],
     ),
     EntitySpec(
         name='trust_relation', gql_type='TrustRelation', root_field='TrustRelation',
@@ -243,15 +252,6 @@ ENTITIES = [
         mutable=True, deletable=False, partition_expr='',
         order_by='id', indexes=[],
         page_size=1000, rescan_interval_s=7200, enabled=True,
-        fields=[FieldSpec('blockNumber', 'block_number', 'UInt64', False), FieldSpec('expiryTime', 'expiry_time', 'UInt256', False), FieldSpec('id', 'id', 'String', False), FieldSpec('isMigrated', 'is_migrated', 'Bool', False), FieldSpec('isMutual', 'is_mutual', 'Bool', False), FieldSpec('isPendingUntilRegisterHuman', 'is_pending_until_register_human', 'Bool', False), FieldSpec('limit', 'limit', 'Int256', False), FieldSpec('logIndex', 'log_index', 'Int64', False), FieldSpec('timestamp', 'timestamp', 'Int64', False), FieldSpec('transactionIndex', 'transaction_index', 'Int64', False), FieldSpec('trustee_id', 'trustee_id', 'String', False), FieldSpec('truster_id', 'truster_id', 'String', False), FieldSpec('version', 'version', 'Int64', False)],
-    ),
-    EntitySpec(
-        name='v1_token_pending_stop', gql_type='V1TokenPendingStop', root_field='V1TokenPendingStop',
-        strategy=SyncStrategy.FULL_RESCAN, cursor_field=None,
-        block_field=None, ts_field=None, version_field=None,
-        mutable=True, deletable=True, partition_expr='',
-        order_by='id', indexes=[],
-        page_size=1000, rescan_interval_s=300, enabled=True,
-        fields=[FieldSpec('avatarId', 'avatar_id', 'String', False), FieldSpec('id', 'id', 'String', False)],
+        fields=[FieldSpec('blockNumber', 'block_number', 'UInt64', False), FieldSpec('expiryTime', 'expiry_time', 'UInt256', False), FieldSpec('id', 'id', 'String', False), FieldSpec('isMutual', 'is_mutual', 'Bool', False), FieldSpec('isPendingUntilRegisterHuman', 'is_pending_until_register_human', 'Bool', False), FieldSpec('logIndex', 'log_index', 'Int64', False), FieldSpec('timestamp', 'timestamp', 'Int64', False), FieldSpec('transactionIndex', 'transaction_index', 'Int64', False), FieldSpec('trustee_id', 'trustee_id', 'String', False), FieldSpec('truster_id', 'truster_id', 'String', False)],
     ),
 ]

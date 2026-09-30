@@ -10,6 +10,25 @@ from src.parsers.generic import GenericEntityParser
 
 def test_entity_count():
     assert len(ENTITIES) == 28
+    # 27 synced; AffiliateGroupMembership is registered but has no envio_ga table yet
+    assert sum(1 for s in ENTITIES if s.enabled) == 27
+
+
+def test_no_removed_upstream_fields():
+    # Fields/types dropped from the upstream schema (found 2026-09-30). Requesting any
+    # of them fails GraphQL validation for the whole entity on every tick, silently.
+    gone = {
+        "Avatar": {"migrated", "trustsGivenCountV1", "trustsMutualCountV1",
+                   "trustsReceivedCountV1", "v1Stopped", "v1Token_id", "version",
+                   "wrappedTokenId"},
+        "Token": {"version"},
+        "Transfer": {"version"},
+        "TrustRelation": {"isMigrated", "limit", "version"},
+    }
+    by = {s.gql_type: s for s in ENTITIES}
+    assert "V1TokenPendingStop" not in by
+    for t, fields in gone.items():
+        assert not fields & {f.gql_name for f in by[t].fields}, t
 
 
 def test_every_entity_has_id():
@@ -52,9 +71,9 @@ def test_deletable_is_opt_in():
     # small mutable/lifecycle entities are delete-checked
     for n in ("cashback", "avatar_balance", "avatar_total_balance_v2", "profile", "swap",
               "circles_backing", "auto_topup", "investment_account", "metri_balance",
-              "metri_order", "pending_recovery", "v1_token_pending_stop"):
+              "metri_order", "pending_recovery"):
         assert by[n] is True, n
-    assert sum(1 for v in by.values() if v) == 18
+    assert sum(1 for v in by.values() if v) == 17
 
 
 def test_transaction_action_optimized():
